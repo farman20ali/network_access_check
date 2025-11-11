@@ -40,7 +40,8 @@ OPTIONS:
     -f, --format <format>       Output format: text, json, csv, xml (default: text)
     -c, --combined              Create combined report with all results
     -q, --quick <host> <port>   Quick test mode (supports ranges: 80,443 or 8000-8100)
-    -d, --dns <host>            Resolve DNS and show IP address
+    -d, --dns <host>            Resolve DNS and show IP address (accepts URLs)
+    -p, --ping <host>           Ping host using ICMP (accepts URLs/IPs)
     --csv                       Input file is in CSV format (host,port)
     -h, --help                  Show this help message
     -v, --version               Show version information
@@ -60,6 +61,9 @@ EXAMPLES:
     $cmd_name -q google.com 80,443                 # Quick test multiple ports
     $cmd_name -q 10.0.0.1-50 22                    # Quick test IP range
     $cmd_name -d google.com                        # Resolve DNS to IP
+    $cmd_name -d https://api.example.com           # DNS from URL (strips scheme/path)
+    $cmd_name -p 8.8.8.8                           # Ping Google DNS
+    $cmd_name -p https://github.com                # Ping from URL
     $cmd_name -v                                   # Show version
     $cmd_name -q localhost 8000-8100               # Quick test port range
     echo "192.168.1.1-50 80" | $cmd_name          # Check IP range
@@ -133,24 +137,31 @@ parse_args() {
                 fi
                 echo "DNS Lookup for: $2"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                
+
+                # Normalize the provided argument into a bare hostname
+                # Accepts inputs like: example.com, http://example.com/path, https://example.com:8443/abc
+                raw_input="$2"
+                query_host="${raw_input#*://}"
+                query_host="${query_host%%/*}"
+                query_host="${query_host%%:*}"
+
                 # Try multiple DNS lookup methods in order of preference
                 resolved=0
-                
+
                 # Method 1: Try host command (if available)
                 if command -v host &> /dev/null; then
-                    if host "$2" > /dev/null 2>&1; then
-                        echo "Hostname: $2"
+                    if host "$query_host" > /dev/null 2>&1; then
+                        echo "Hostname: $query_host"
                         echo ""
                         echo "IP Addresses:"
-                        host "$2" | grep "has address" | awk '{print "  " $4}'
-                        host "$2" | grep "has IPv6 address" | awk '{print "  " $5 " (IPv6)"}'
+                        host "$query_host" | grep "has address" | awk '{print "  " $4}'
+                        host "$query_host" | grep "has IPv6 address" | awk '{print "  " $5 " (IPv6)"}'
                         echo ""
                         echo "Aliases:"
-                        host "$2" | grep "is an alias" | awk '{print "  " $1 " -> " $6}'
+                        host "$query_host" | grep "is an alias" | awk '{print "  " $1 " -> " $6}'
                         echo ""
                         # Try reverse lookup
-                        ip=$(host "$2" | grep "has address" | head -1 | awk '{print $4}')
+                        ip=$(host "$query_host" | grep "has address" | head -1 | awk '{print $4}')
                         if [[ -n "$ip" ]]; then
                             echo "Reverse DNS:"
                             host "$ip" | grep "pointer" | awk '{print "  " $5}' || echo "  No PTR record"
@@ -158,45 +169,82 @@ parse_args() {
                         resolved=1
                     fi
                 fi
-                
+
                 # Method 2: Try getent command (usually available in most systems)
                 if [[ $resolved -eq 0 ]] && command -v getent &> /dev/null; then
-                    result=$(getent hosts "$2" 2>/dev/null)
+                    result=$(getent hosts "$query_host" 2>/dev/null)
                     if [[ -n "$result" ]]; then
-                        echo "Hostname: $2"
+                        echo "Hostname: $query_host"
                         echo ""
                         echo "IP Addresses:"
                         echo "$result" | awk '{print "  " $1}'
                         resolved=1
                     fi
                 fi
-                
+
                 # Method 3: Try dig command (from dnsutils)
                 if [[ $resolved -eq 0 ]] && command -v dig &> /dev/null; then
-                    result=$(dig +short "$2" 2>/dev/null)
+                    result=$(dig +short "$query_host" 2>/dev/null)
                     if [[ -n "$result" ]]; then
-                        echo "Hostname: $2"
+                        echo "Hostname: $query_host"
                         echo ""
                         echo "IP Addresses:"
                         echo "$result" | grep -v '\.$' | awk '{print "  " $1}'
                         resolved=1
                     fi
                 fi
-                
+
                 # Method 4: Try nslookup command
                 if [[ $resolved -eq 0 ]] && command -v nslookup &> /dev/null; then
-                    result=$(nslookup "$2" 2>/dev/null | grep -A 10 "^Name:" | grep "Address:" | awk '{print $2}')
+                    result=$(nslookup "$query_host" 2>/dev/null | grep -A 10 "^Name:" | grep "Address:" | awk '{print $2}')
                     if [[ -n "$result" ]]; then
-                        echo "Hostname: $2"
+                        echo "Hostname: $query_host"
                         echo ""
                         echo "IP Addresses:"
                         echo "$result" | awk '{print "  " $1}'
                         resolved=1
                     fi
                 fi
-                
+
                 if [[ $resolved -eq 0 ]]; then
-                    echo "❌ Failed to resolve: $2"
+                    echo "❌ Failed to resolve: $query_host"
+                    exit 1
+                fi
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                exit 0
+                ;;
+            -p|--ping)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: -p/--ping requires <host> argument" >&2
+                    exit 1
+                fi
+                echo "ICMP Ping Test for: $2"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                # Normalize the provided argument into a bare hostname/IP
+                raw_input="$2"
+                ping_host="${raw_input#*://}"
+                ping_host="${ping_host%%/*}"
+                ping_host="${ping_host%%:*}"
+                
+                echo "Target: $ping_host"
+                echo ""
+                
+                # Check if ping command is available
+                if ! command -v ping &> /dev/null; then
+                    echo "❌ Error: 'ping' command not found" >&2
+                    exit 1
+                fi
+                
+                # Run ping (4 packets, with timeout)
+                echo "Sending 4 ICMP packets..."
+                echo ""
+                if ping -c 4 -W 2 "$ping_host" 2>&1; then
+                    echo ""
+                    echo "✅ Ping successful"
+                else
+                    echo ""
+                    echo "❌ Ping failed (host unreachable or no response)"
                     exit 1
                 fi
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -507,7 +555,7 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 name=$(date +"%Y-%m-%d")
 timestamp=$(date +"%Y-%m-%d %H:%M:%S")
 
-result_file="result.txt"
+result_file="result-${name}.txt"
 fail_file="fail-${name}.txt"
 combined_file="combined-${name}.txt"
 
