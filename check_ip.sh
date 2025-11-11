@@ -22,10 +22,16 @@ CSV_INPUT=0
 
 # Show help
 show_help() {
+    # Get the command name (netcheck or check_ip.sh)
+    local cmd_name="netcheck"
+    if [[ "$0" == *"check_ip.sh"* ]]; then
+        cmd_name="./check_ip.sh"
+    fi
+    
     cat << EOF
 Network Connectivity Checker - Advanced Version
 
-Usage: $0 [OPTIONS] [input_file]
+Usage: $cmd_name [OPTIONS] [input_file]
 
 OPTIONS:
     -t, --timeout <seconds>     Connection timeout (default: 5)
@@ -45,21 +51,21 @@ INPUT:
                                Use --csv flag for CSV format files
 
 EXAMPLES:
-    $0 ip-text.txt                          # Basic usage
-    $0 --csv hosts.csv                      # Read from CSV file
-    $0 -t 10 -j 20 ip-text.txt             # Custom timeout and parallel jobs
-    $0 -f json -c ip-text.txt              # JSON output with combined report
-    cat ip-text.txt | $0 -V                 # Verbose mode from stdin
-    $0 -q 192.168.1.1 80                    # Quick test single port
-    $0 -q google.com 80,443                 # Quick test multiple ports
-    $0 -q 10.0.0.1-50 22                    # Quick test IP range
-    $0 -d google.com                        # Resolve DNS to IP
-    $0 -v                                   # Show version
-    $0 -q localhost 8000-8100               # Quick test port range
-    echo "192.168.1.1-50 80" | $0          # Check IP range
-    echo "192.168.1.0/24 22" | $0          # Check CIDR subnet
-    echo "host.com 80,443,8080" | $0       # Check multiple ports
-    echo "host.com 8000-8100" | $0         # Check port range
+    $cmd_name ip-text.txt                          # Basic usage
+    $cmd_name --csv hosts.csv                      # Read from CSV file
+    $cmd_name -t 10 -j 20 ip-text.txt             # Custom timeout and parallel jobs
+    $cmd_name -f json -c ip-text.txt              # JSON output with combined report
+    cat ip-text.txt | $cmd_name -V                 # Verbose mode from stdin
+    $cmd_name -q 192.168.1.1 80                    # Quick test single port
+    $cmd_name -q google.com 80,443                 # Quick test multiple ports
+    $cmd_name -q 10.0.0.1-50 22                    # Quick test IP range
+    $cmd_name -d google.com                        # Resolve DNS to IP
+    $cmd_name -v                                   # Show version
+    $cmd_name -q localhost 8000-8100               # Quick test port range
+    echo "192.168.1.1-50 80" | $cmd_name          # Check IP range
+    echo "192.168.1.0/24 22" | $cmd_name          # Check CIDR subnet
+    echo "host.com 80,443,8080" | $cmd_name       # Check multiple ports
+    echo "host.com 8000-8100" | $cmd_name         # Check port range
 
 INPUT FORMAT:
     Each line should contain: HOST PORT(S)
@@ -127,23 +133,69 @@ parse_args() {
                 fi
                 echo "DNS Lookup for: $2"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                if host "$2" > /dev/null 2>&1; then
-                    echo "Hostname: $2"
-                    echo ""
-                    echo "IP Addresses:"
-                    host "$2" | grep "has address" | awk '{print "  " $4}'
-                    host "$2" | grep "has IPv6 address" | awk '{print "  " $5 " (IPv6)"}'
-                    echo ""
-                    echo "Aliases:"
-                    host "$2" | grep "is an alias" | awk '{print "  " $1 " -> " $6}'
-                    echo ""
-                    # Try reverse lookup
-                    ip=$(host "$2" | grep "has address" | head -1 | awk '{print $4}')
-                    if [[ -n "$ip" ]]; then
-                        echo "Reverse DNS:"
-                        host "$ip" | grep "pointer" | awk '{print "  " $5}' || echo "  No PTR record"
+                
+                # Try multiple DNS lookup methods in order of preference
+                resolved=0
+                
+                # Method 1: Try host command (if available)
+                if command -v host &> /dev/null; then
+                    if host "$2" > /dev/null 2>&1; then
+                        echo "Hostname: $2"
+                        echo ""
+                        echo "IP Addresses:"
+                        host "$2" | grep "has address" | awk '{print "  " $4}'
+                        host "$2" | grep "has IPv6 address" | awk '{print "  " $5 " (IPv6)"}'
+                        echo ""
+                        echo "Aliases:"
+                        host "$2" | grep "is an alias" | awk '{print "  " $1 " -> " $6}'
+                        echo ""
+                        # Try reverse lookup
+                        ip=$(host "$2" | grep "has address" | head -1 | awk '{print $4}')
+                        if [[ -n "$ip" ]]; then
+                            echo "Reverse DNS:"
+                            host "$ip" | grep "pointer" | awk '{print "  " $5}' || echo "  No PTR record"
+                        fi
+                        resolved=1
                     fi
-                else
+                fi
+                
+                # Method 2: Try getent command (usually available in most systems)
+                if [[ $resolved -eq 0 ]] && command -v getent &> /dev/null; then
+                    result=$(getent hosts "$2" 2>/dev/null)
+                    if [[ -n "$result" ]]; then
+                        echo "Hostname: $2"
+                        echo ""
+                        echo "IP Addresses:"
+                        echo "$result" | awk '{print "  " $1}'
+                        resolved=1
+                    fi
+                fi
+                
+                # Method 3: Try dig command (from dnsutils)
+                if [[ $resolved -eq 0 ]] && command -v dig &> /dev/null; then
+                    result=$(dig +short "$2" 2>/dev/null)
+                    if [[ -n "$result" ]]; then
+                        echo "Hostname: $2"
+                        echo ""
+                        echo "IP Addresses:"
+                        echo "$result" | grep -v '\.$' | awk '{print "  " $1}'
+                        resolved=1
+                    fi
+                fi
+                
+                # Method 4: Try nslookup command
+                if [[ $resolved -eq 0 ]] && command -v nslookup &> /dev/null; then
+                    result=$(nslookup "$2" 2>/dev/null | grep -A 10 "^Name:" | grep "Address:" | awk '{print $2}')
+                    if [[ -n "$result" ]]; then
+                        echo "Hostname: $2"
+                        echo ""
+                        echo "IP Addresses:"
+                        echo "$result" | awk '{print "  " $1}'
+                        resolved=1
+                    fi
+                fi
+                
+                if [[ $resolved -eq 0 ]]; then
                     echo "❌ Failed to resolve: $2"
                     exit 1
                 fi

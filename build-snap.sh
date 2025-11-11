@@ -75,6 +75,7 @@ apps:
       - home
     environment:
       LC_ALL: C.UTF-8
+      PATH: $SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$PATH
 
 parts:
   netcheck:
