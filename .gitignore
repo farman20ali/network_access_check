@@ -1,0 +1,116 @@
+# Build artifacts
+*.deb
+*.snap
+netcheck_*/
+snap/.snapcraft/
+snap/prime/
+snap/stage/
+snap/parts/
+*.build
+*.upload
+
+# Package build directories
+build/
+dist/
+*.egg-info/
+
+# Test output files
+result.txt
+result.json
+result.csv
+result.xml
+fail-*.txt
+combined-*.txt
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# Log files
+*.log
+logs/
+test.log
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+*.sublime-*
+.DS_Store
+
+# Python (if you add Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+ENV/
+
+# Debian packaging temporary files
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/*.log
+debian/tmp/
+
+# Snapcraft cache and build files
+*.snap-build
+.snapcraft/
+prime/
+stage/
+parts/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+
+# Test data (keep example files, ignore generated ones)
+test-output/
+test-results/
+
+# Personal notes
+notes.txt
+TODO.txt
+NOTES.md
+
+# Credentials and secrets
+.env
+.env.local
+secrets.txt
+credentials.json
+*.key
+*.pem
+
+# Archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tgz
+*.rar
+*.7z
+
+# Keep these example files (negation)
+!hosts.csv
+!test-ips.txt
+!test-ranges.txt

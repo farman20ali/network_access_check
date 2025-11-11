@@ -1,0 +1,10 @@
+localhost 80
+localhost 443
+google.com 80
+google.com 443
+8.8.8.8 53
+1.1.1.1 53
+localhost 22
+localhost 3306
+192.168.1.1 80
+10.0.0.1 80

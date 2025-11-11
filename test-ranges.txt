@@ -1,0 +1,18 @@
+# Test file for IP and port ranges
+# Single IP, single port
+localhost 80
+
+# Single IP, multiple ports
+localhost 80,443,3306
+
+# IP range with single port
+127.0.0.1-3 22
+
+# CIDR notation
+192.168.1.0/30 80
+
+# Port range
+localhost 8000-8005
+
+# Combined: IP range with multiple ports
+10.0.0.1-2 80,443
