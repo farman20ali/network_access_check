@@ -29,6 +29,13 @@ if [ ! -f "snap/snapcraft.yaml" ]; then
 name: netcheck
 version: '1.0.0'
 summary: Network connectivity checker with advanced features
+title: NetCheck - Network Connectivity Tester
+icon: snap/gui/icon.png
+license: GPL-3.0
+website: https://github.com/farman20ali/network_access_check
+source-code: https://github.com/farman20ali/network_access_check
+issues: https://github.com/farman20ali/network_access_check/issues
+contact: https://github.com/farman20ali/network_access_check/issues
 description: |
   A powerful bash-based network connectivity testing tool that supports:
   

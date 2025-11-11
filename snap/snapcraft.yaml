@@ -1,0 +1,69 @@
+name: netcheck
+version: '1.0.0'
+summary: Network connectivity checker with advanced features
+title: NetCheck - Network Connectivity Tester
+icon: snap/gui/icon.png
+license: GPL-3.0
+website: https://github.com/farman20ali/network_access_check
+source-code: https://github.com/farman20ali/network_access_check
+issues: https://github.com/farman20ali/network_access_check/issues
+contact: https://github.com/farman20ali/network_access_check/issues
+description: |
+  A powerful bash-based network connectivity testing tool that supports:
+  
+  - Parallel connection testing (up to 256 concurrent jobs)
+  - IP range support (192.168.1.1-50)
+  - CIDR notation (10.0.0.0/24)
+  - Port ranges (8000-8100) and multiple ports (80,443,3306)
+  - CSV file input for bulk testing
+  - Multiple output formats (text, JSON, CSV, XML)
+  - Quick test mode for one-off checks
+  - Real-time progress tracking
+  - Combined reports for failed connections
+  
+  Perfect for:
+  - System administrators monitoring infrastructure
+  - DevOps engineers validating deployments
+  - Network diagnostics and troubleshooting
+  - Security auditing and port scanning
+  - Load balancer health checks
+
+grade: stable
+confinement: strict
+
+base: core22
+
+architectures:
+  - build-on: amd64
+  - build-on: arm64
+  - build-on: armhf
+
+apps:
+  netcheck:
+    command: bin/netcheck
+    plugs:
+      - network
+      - network-bind
+      - home
+    environment:
+      LC_ALL: C.UTF-8
+
+parts:
+  netcheck:
+    plugin: dump
+    source: .
+    source-type: local
+    organize:
+      check_ip.sh: bin/netcheck
+    stage:
+      - bin/netcheck
+      - README.md
+      - EXAMPLES.md
+      - LICENSE
+    stage-packages:
+      - telnet
+      - netcat-openbsd
+      - coreutils
+      - grep
+      - sed
+      - dnsutils
