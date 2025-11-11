@@ -80,16 +80,14 @@ parts:
       - bin/netcheck
       - README.md
       - EXAMPLES.md
-      - INSTALL.md
-    override-build: |
-      craftctl default
-      chmod +x $CRAFT_PART_INSTALL/bin/netcheck
+      - LICENSE
     stage-packages:
       - telnet
       - netcat-openbsd
       - coreutils
       - grep
       - sed
+      - dnsutils
 EOF
     echo "✅ snapcraft.yaml created"
 fi
