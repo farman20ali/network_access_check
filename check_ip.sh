@@ -6,6 +6,8 @@
 # Input format: Each line should contain IP/hostname and port separated by space
 # Example: 192.168.1.1 80
 
+VERSION="1.0.0"
+
 set -u
 
 # Default configuration
@@ -28,12 +30,14 @@ Usage: $0 [OPTIONS] [input_file]
 OPTIONS:
     -t, --timeout <seconds>     Connection timeout (default: 5)
     -j, --jobs <number>         Max parallel jobs (default: 10)
-    -v, --verbose               Verbose output
+    -V, --verbose               Verbose output
     -f, --format <format>       Output format: text, json, csv, xml (default: text)
     -c, --combined              Create combined report with all results
     -q, --quick <host> <port>   Quick test mode (supports ranges: 80,443 or 8000-8100)
+    -d, --dns <host>            Resolve DNS and show IP address
     --csv                       Input file is in CSV format (host,port)
     -h, --help                  Show this help message
+    -v, --version               Show version information
 
 INPUT:
     input_file                  File containing IP:port pairs (one per line)
@@ -45,9 +49,12 @@ EXAMPLES:
     $0 --csv hosts.csv                      # Read from CSV file
     $0 -t 10 -j 20 ip-text.txt             # Custom timeout and parallel jobs
     $0 -f json -c ip-text.txt              # JSON output with combined report
-    cat ip-text.txt | $0 -v                 # Verbose mode from stdin
+    cat ip-text.txt | $0 -V                 # Verbose mode from stdin
     $0 -q 192.168.1.1 80                    # Quick test single port
     $0 -q google.com 80,443                 # Quick test multiple ports
+    $0 -q 10.0.0.1-50 22                    # Quick test IP range
+    $0 -d google.com                        # Resolve DNS to IP
+    $0 -v                                   # Show version
     $0 -q localhost 8000-8100               # Quick test port range
     echo "192.168.1.1-50 80" | $0          # Check IP range
     echo "192.168.1.0/24 22" | $0          # Check CIDR subnet
@@ -87,7 +94,7 @@ parse_args() {
                 MAX_JOBS="$2"
                 shift 2
                 ;;
-            -v|--verbose)
+            -V|--verbose)
                 VERBOSE=1
                 shift
                 ;;
@@ -104,10 +111,50 @@ parse_args() {
                 shift
                 ;;
             -q|--quick)
+                if [[ $# -lt 3 ]]; then
+                    echo "Error: -q/--quick requires <host> <port> arguments" >&2
+                    exit 1
+                fi
                 QUICK_TEST=1
                 QUICK_HOST="$2"
                 QUICK_PORT="$3"
                 shift 3
+                ;;
+            -d|--dns)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: -d/--dns requires <hostname> argument" >&2
+                    exit 1
+                fi
+                echo "DNS Lookup for: $2"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                if host "$2" > /dev/null 2>&1; then
+                    echo "Hostname: $2"
+                    echo ""
+                    echo "IP Addresses:"
+                    host "$2" | grep "has address" | awk '{print "  " $4}'
+                    host "$2" | grep "has IPv6 address" | awk '{print "  " $5 " (IPv6)"}'
+                    echo ""
+                    echo "Aliases:"
+                    host "$2" | grep "is an alias" | awk '{print "  " $1 " -> " $6}'
+                    echo ""
+                    # Try reverse lookup
+                    ip=$(host "$2" | grep "has address" | head -1 | awk '{print $4}')
+                    if [[ -n "$ip" ]]; then
+                        echo "Reverse DNS:"
+                        host "$ip" | grep "pointer" | awk '{print "  " $5}' || echo "  No PTR record"
+                    fi
+                else
+                    echo "❌ Failed to resolve: $2"
+                    exit 1
+                fi
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                exit 0
+                ;;
+            -v|--version)
+                echo "Network Connectivity Checker (netcheck) version $VERSION"
+                echo "Copyright (c) 2025"
+                echo "License: GNU GPL v3"
+                exit 0
                 ;;
             -h|--help)
                 show_help
@@ -258,13 +305,41 @@ expand_line() {
 
 parse_args "$@"
 
-# Quick test mode - check without creating files (supports port ranges)
+# Validate input: must have either input file, stdin, or quick test mode
+if [[ $QUICK_TEST -eq 0 ]]; then
+    if [[ -z "$INPUT_FILE" ]] && [[ -t 0 ]]; then
+        echo "Error: No input provided!" >&2
+        echo "" >&2
+        echo "You must provide either:" >&2
+        echo "  - An input file: $0 hosts.txt" >&2
+        echo "  - Stdin input: cat hosts.txt | $0" >&2
+        echo "  - Quick test: $0 -q <host> <port>" >&2
+        echo "  - CSV file: $0 --csv hosts.csv" >&2
+        echo "" >&2
+        echo "Use -h or --help for more information" >&2
+        exit 1
+    fi
+    
+    # Check if input file exists
+    if [[ -n "$INPUT_FILE" ]] && [[ ! -f "$INPUT_FILE" ]]; then
+        echo "Error: Input file not found: $INPUT_FILE" >&2
+        exit 1
+    fi
+fi
+
+# Quick test mode - check without creating files (supports IP and port ranges)
 if [[ $QUICK_TEST -eq 1 ]]; then
     echo "Quick Test Mode"
     echo "Host: $QUICK_HOST"
     echo "Port(s): $QUICK_PORT"
     echo "Timeout: ${TIMEOUT}s"
     echo ""
+    
+    # Expand IP addresses if it's a range
+    test_hosts=()
+    while IFS= read -r host; do
+        test_hosts+=("$host")
+    done < <(expand_ip_range "$QUICK_HOST")
     
     # Expand ports if it's a range or multiple ports
     test_ports=()
@@ -280,68 +355,81 @@ if [[ $QUICK_TEST -eq 1 ]]; then
         fi
     done
     
+    total_hosts=${#test_hosts[@]}
     total_ports=${#test_ports[@]}
+    total_tests=$((total_hosts * total_ports))
     success_count=0
     fail_count=0
     
-    echo "Testing ${total_ports} port(s)..."
-    echo ""
-    
-    # Test each port
-    for test_port in "${test_ports[@]}"; do
-        # Try telnet first
-        TELNET_EXIT_CODE=1
-        NC_EXIT_CODE=1
-        
-        start_time=$(date +%s%N)
-        (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$QUICK_HOST" "$test_port" > /dev/null 2>&1 < /dev/null
-        TELNET_EXIT_CODE=$?
-        end_time=$(date +%s%N)
-        
-        # If telnet fails, try netcat
-        if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
-            start_time=$(date +%s%N)
-            nc -w "$TIMEOUT" -z "$QUICK_HOST" "$test_port" > /dev/null 2>&1
-            NC_EXIT_CODE=$?
-            end_time=$(date +%s%N)
-        fi
-        
-        # Calculate response time in milliseconds
-        response_time=$(( (end_time - start_time) / 1000000 ))
-        
-        # Display result
-        echo "┌─────────────────────────────────────────────┐"
-        printf "│ %-43s │\n" "Host: $QUICK_HOST"
-        printf "│ %-43s │\n" "Port: $test_port"
-        echo "├─────────────────────────────────────────────┤"
-        
-        if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
-            method="telnet"
-            [[ $NC_EXIT_CODE -eq 0 ]] && method="netcat"
-            
-            printf "│ Status: \033[0;32m%-34s\033[0m │\n" "✓ CONNECTED"
-            printf "│ %-43s │\n" "Method: $method"
-            printf "│ %-43s │\n" "Response Time: ${response_time}ms"
-            echo "└─────────────────────────────────────────────┘"
-            ((success_count++))
-        else
-            printf "│ Status: \033[0;31m%-34s\033[0m │\n" "✗ FAILED"
-            printf "│ %-43s │\n" "Reason: Connection timeout or refused"
-            printf "│ %-43s │\n" "Attempted Time: ${response_time}ms"
-            echo "└─────────────────────────────────────────────┘"
-            ((fail_count++))
-        fi
+    if [[ $total_hosts -gt 1 ]]; then
+        echo "Expanded to ${total_hosts} host(s) and ${total_ports} port(s) = ${total_tests} total tests"
         echo ""
+    else
+        echo "Testing ${total_ports} port(s)..."
+        echo ""
+    fi
+    
+    # Test each host and port combination
+    for test_host in "${test_hosts[@]}"; do
+        for test_port in "${test_ports[@]}"; do
+            # Try telnet first
+            TELNET_EXIT_CODE=1
+            NC_EXIT_CODE=1
+            
+            start_time=$(date +%s%N)
+            (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$test_host" "$test_port" > /dev/null 2>&1 < /dev/null
+            TELNET_EXIT_CODE=$?
+            end_time=$(date +%s%N)
+            
+            # If telnet fails, try netcat
+            if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
+                start_time=$(date +%s%N)
+                nc -w "$TIMEOUT" -z "$test_host" "$test_port" > /dev/null 2>&1
+                NC_EXIT_CODE=$?
+                end_time=$(date +%s%N)
+            fi
+            
+            # Calculate response time in milliseconds
+            response_time=$(( (end_time - start_time) / 1000000 ))
+            
+            # Display result
+            echo "┌─────────────────────────────────────────────┐"
+            printf "│ %-43s │\n" "Host: $test_host"
+            printf "│ %-43s │\n" "Port: $test_port"
+            echo "├─────────────────────────────────────────────┤"
+            
+            if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
+                method="telnet"
+                [[ $NC_EXIT_CODE -eq 0 ]] && method="netcat"
+                
+                printf "│ Status: \033[0;32m%-34s\033[0m │\n" "✓ CONNECTED"
+                printf "│ %-43s │\n" "Method: $method"
+                printf "│ %-43s │\n" "Response Time: ${response_time}ms"
+                echo "└─────────────────────────────────────────────┘"
+                ((success_count++))
+            else
+                printf "│ Status: \033[0;31m%-34s\033[0m │\n" "✗ FAILED"
+                printf "│ %-43s │\n" "Reason: Connection timeout or refused"
+                printf "│ %-43s │\n" "Attempted Time: ${response_time}ms"
+                echo "└─────────────────────────────────────────────┘"
+                ((fail_count++))
+            fi
+            echo ""
+        done
     done
     
-    # Summary for multiple ports
-    if [[ $total_ports -gt 1 ]]; then
+    # Summary for multiple tests
+    if [[ $total_tests -gt 1 ]]; then
         echo "════════════════════════════════════════════"
         echo "Quick Test Summary"
         echo "════════════════════════════════════════════"
-        echo "Total Ports: $total_ports"
-        echo -e "Successful:  \033[0;32m$success_count\033[0m"
-        echo -e "Failed:      \033[0;31m$fail_count\033[0m"
+        if [[ $total_hosts -gt 1 ]]; then
+            echo "Hosts Tested: $total_hosts"
+        fi
+        echo "Ports Tested: $total_ports"
+        echo "Total Tests:  $total_tests"
+        echo -e "Successful:   \033[0;32m$success_count\033[0m"
+        echo -e "Failed:       \033[0;31m$fail_count\033[0m"
         echo "════════════════════════════════════════════"
     fi
     

@@ -5,13 +5,15 @@
 A **production-ready network connectivity testing tool** with enterprise features!
 
 ```
-✅ Full-featured bash script (688 lines)
+✅ Full-featured bash script (800+ lines)
 ✅ 3 installation methods (manual, DEB, Snap)
-✅ Complete documentation (7 guides)
+✅ Complete documentation (9 guides)
 ✅ Build automation (Makefile + scripts)
 ✅ Test suites (14/14 tests passing)
 ✅ Man page & bash completion
 ✅ Multi-OS support (6 Linux distributions)
+✅ Version 1.0.0 - GPL v3 licensed
+✅ DNS resolution & input validation
 ```
 
 ---
@@ -50,7 +52,8 @@ network_access_check/
 ├── MAKEFILE_GUIDE.md           # Makefile explanation ⭐
 ├── DEB_PACKAGING.md            # DEB packaging guide ⭐
 ├── SNAP_PACKAGING.md           # Snap packaging guide ⭐
-└── PUBLISHING_GUIDE.md         # Publishing quick reference ⭐
+├── PUBLISHING_GUIDE.md         # Publishing quick reference ⭐
+└── LICENSE                     # GNU GPL v3 (open source, copyleft)
 ```
 
 ---
@@ -65,9 +68,13 @@ make test
 ./test-range-features.sh
 ./test-csv-quick.sh
 
+# Check version
+./check_ip.sh -v
+
 # Test locally
 ./check_ip.sh -q google.com 443
 ./check_ip.sh --csv hosts.csv
+./check_ip.sh -d google.com        # DNS lookup
 
 # Clean temporary files
 make clean
@@ -81,8 +88,10 @@ make install
 # or: sudo ./install.sh
 
 # Use the command
-netcheck -q google.com 443
-netcheck --csv hosts.csv -j 50
+netcheck -v                       # Check version
+netcheck -q google.com 443        # Quick mode
+netcheck -d example.com           # DNS lookup
+netcheck --csv hosts.csv -j 50    # CSV mode, parallel
 
 # Uninstall
 make uninstall
@@ -351,7 +360,7 @@ netcheck --help
 
 ## 🏆 What Makes This Professional?
 
-✅ **Complete Documentation** - 7 guides covering all aspects
+✅ **Complete Documentation** - 9 guides covering all aspects
 ✅ **Multiple Installation Methods** - Manual, DEB, Snap
 ✅ **Build Automation** - Makefile + build scripts
 ✅ **Test Coverage** - 14 automated tests
@@ -360,6 +369,10 @@ netcheck --help
 ✅ **Multi-OS Support** - 6 Linux distributions
 ✅ **Enterprise Features** - Parallel processing, multiple formats
 ✅ **Production Ready** - Error handling, validation, logging
+✅ **Open Source** - GPL v3 license (copyleft protection)
+✅ **DNS Resolution** - Built-in DNS lookup capability
+✅ **Input Validation** - Prevents errors with helpful messages
+✅ **Version Control** - Semantic versioning (1.0.0)
 
 ---
 
@@ -368,7 +381,9 @@ netcheck --help
 ### For Personal Use
 ```bash
 make install
-netcheck -q google.com 443
+netcheck -v                    # Check version (1.0.0)
+netcheck -q google.com 443     # Quick connectivity test
+netcheck -d example.com        # DNS lookup
 ```
 
 ### For Distribution to Others
@@ -410,12 +425,13 @@ sudo snap install netcheck
 ## 🎉 Summary
 
 You now have:
-1. ✅ A **professional network testing tool**
+1. ✅ A **professional network testing tool** (v1.0.0)
 2. ✅ **Makefile** for convenient commands
 3. ✅ **Build scripts** for DEB and Snap packages
 4. ✅ **Complete documentation** for everything
 5. ✅ **Multiple distribution methods**
-6. ✅ **Production-ready code**
+6. ✅ **Production-ready code** with DNS & validation
+7. ✅ **GPL v3 License** - open source with copyleft protection
 
 **Recommendation:** Start with Snap - easiest to publish, works everywhere, auto-updates!
 

@@ -4,20 +4,21 @@ A powerful, feature-rich command-line tool for testing network connectivity to m
 
 ## Features
 
-- ✅ **Parallel Processing** - Check multiple hosts simultaneously
+- ✅ **Parallel Processing** - Check multiple hosts simultaneously (up to 256 jobs)
 - ✅ **Multiple Output Formats** - Text, JSON, CSV, XML
 - ✅ **Quick Test Mode** - Test single host without creating files
-- ✅ **Progress Bar** - Real-time progress tracking
-- ✅ **IP Range Support** - Check IP ranges (192.168.1.1-50)
-- ✅ **CIDR Notation** - Check entire subnets (192.168.1.0/24)
-- ✅ **Multiple Ports** - Test multiple ports per host (80,443,8080)
-- ✅ **Port Ranges** - Check port ranges (8000-8100)
+- ✅ **IP Range Support** - Check IP ranges (192.168.1.1-50) and CIDR (10.0.0.0/24)
+- ✅ **Port Ranges** - Check port ranges (8000-8100) or multiple ports (80,443,8080)
 - ✅ **CSV File Support** - Read from CSV files (host,port format)
-- ✅ **Enhanced Quick Mode** - Test single host with port ranges
+- ✅ **DNS Lookup** - Resolve hostnames to IP addresses with reverse DNS
+- ✅ **Progress Bar** - Real-time progress tracking
+- ✅ **Response Time Measurement** - See connection latency in milliseconds
+- ✅ **Version Information** - Check tool version with -v flag
+- ✅ **Input Validation** - Prevents hanging with helpful error messages
 - ✅ **Automatic Dependency Installation** - Installs telnet and netcat if missing
-- ✅ **Response Time Measurement** - See connection latency
-- ✅ **Flexible Input** - File or stdin
+- ✅ **Flexible Input** - File, stdin, or quick test mode
 - ✅ **Man Page & Tab Completion** - Full documentation and bash completion
+- ✅ **Multi-OS Support** - Ubuntu, Debian, CentOS, Fedora, Arch, openSUSE
 
 ## Installation
 
@@ -75,13 +76,51 @@ netcheck -q google.com 443
 netcheck -q 192.168.1.1 80
 netcheck -q localhost 3306
 
-# NEW: Test multiple ports at once
+# Test multiple ports at once
 netcheck -q server.com 80,443,8080
 netcheck -q localhost 80,443
 
-# NEW: Test port range
+# Test port range
 netcheck -q localhost 8000-8100
 netcheck -q server.com 9000-9010
+
+# NEW: Test IP range (multiple hosts)
+netcheck -q 10.90.95.72-75 50000
+netcheck -q 192.168.1.1-10 22
+```
+
+### DNS Lookup
+
+```bash
+# Resolve hostname to IP addresses
+netcheck -d google.com
+netcheck -d github.com
+netcheck -d example.com
+```
+
+Output:
+```
+DNS Lookup for: google.com
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Hostname: google.com
+
+IP Addresses:
+  142.250.202.78
+  2a00:1450:4019:812::200e (IPv6)
+
+Aliases:
+
+Reverse DNS:
+  pnfjra-an-in-f14.1e100.net.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Version Information
+
+```bash
+# Check netcheck version
+netcheck -v
+netcheck --version
 ```
 
 Output:
@@ -165,10 +204,12 @@ netcheck [OPTIONS] [input_file]
 OPTIONS:
     -t, --timeout <seconds>     Connection timeout (default: 5)
     -j, --jobs <number>         Max parallel jobs (default: 10)
-    -v, --verbose               Verbose output
+    -V, --verbose               Verbose output
     -f, --format <format>       Output format: text, json, csv, xml (default: text)
     -c, --combined              Create combined report with all results
     -q, --quick <host> <port>   Quick test mode (no files created)
+    -d, --dns <hostname>        Resolve DNS and show IP address
+    -v, --version               Show version information
     -h, --help                  Show help message
 ```
 
@@ -181,12 +222,35 @@ netcheck hosts.txt
 
 # From stdin
 cat hosts.txt | netcheck
+
+# Verbose mode
+netcheck -V hosts.txt
+echo "google.com 443" | netcheck -V
+```
+
+### DNS Resolution
+```bash
+# Lookup hostname
+netcheck -d google.com
+netcheck -d github.com
+
+# Shows: IPv4, IPv6, aliases, reverse DNS
+```
+
+### Version Check
+```bash
+# Show netcheck version
+netcheck -v
+netcheck --version
 ```
 
 ### Fast Parallel Checking
 ```bash
 # Check 20 hosts simultaneously with 2-second timeout
 netcheck -t 2 -j 20 hosts.txt
+
+# High-speed scanning with 100 parallel jobs
+netcheck -j 100 -t 1 large-list.txt
 ```
 
 ### Different Output Formats
@@ -493,15 +557,40 @@ Contributions welcome! Please test on your OS and submit pull requests.
 
 ## License
 
-MIT License - Free to use and modify
+GNU General Public License v3 (GPL-3.0)
+
+This project is licensed under GPL v3, which means:
+- ✅ Free to use for any purpose
+- ✅ Free to modify and improve
+- ✅ Free to distribute
+- ✅ Can be used commercially
+- ⚠️ Any modifications must also be open source (copyleft)
+- ⚠️ Cannot create proprietary closed-source versions
+
+See [LICENSE](LICENSE) file for full details.
 
 ## Version
 
-Version 1.0 - November 2025
+Version 1.0.0 - November 2025
+
+Check version: `netcheck -v` or `netcheck --version`
+
+## Documentation
+
+- **[README.md](README.md)** - Main documentation (this file)
+- **[EXAMPLES.md](EXAMPLES.md)** - Comprehensive examples and real-world scenarios
+- **[INSTALL.md](INSTALL.md)** - Installation instructions
+- **[MAKEFILE_GUIDE.md](MAKEFILE_GUIDE.md)** - Understanding the Makefile
+- **[DEB_PACKAGING.md](DEB_PACKAGING.md)** - How to create DEB packages
+- **[SNAP_PACKAGING.md](SNAP_PACKAGING.md)** - How to create Snap packages
+- **[PUBLISHING_GUIDE.md](PUBLISHING_GUIDE.md)** - Quick reference for publishing
 
 ## Support
 
 For issues and questions:
 - Check `man netcheck` for full documentation
 - Run `netcheck --help` for quick reference
+- Run `netcheck -v` for version information
+- Run `netcheck -d <hostname>` for DNS lookup
 - View logs in result.txt and fail-*.txt files
+- Report issues on GitHub

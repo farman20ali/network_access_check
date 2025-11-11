@@ -1,10 +1,71 @@
 # Comprehensive Examples - All Features
 
-## 1. Quick Mode Examples
+## 1. Version & Help
+
+### Check Version
+```bash
+netcheck -v
+netcheck --version
+```
+
+Output:
+```
+Network Connectivity Checker (netcheck) version 1.0.0
+Copyright (c) 2025
+License: GNU GPL v3
+```
+
+### Get Help
+```bash
+netcheck -h
+netcheck --help
+```
+
+---
+
+## 2. DNS Lookup Examples
+
+### Basic DNS Resolution
+```bash
+netcheck -d google.com
+netcheck -d github.com
+netcheck -d example.com
+```
+
+Output:
+```
+DNS Lookup for: google.com
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Hostname: google.com
+
+IP Addresses:
+  142.250.202.78
+  2a00:1450:4019:812::200e (IPv6)
+
+Aliases:
+
+Reverse DNS:
+  pnfjra-an-in-f14.1e100.net.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Check Before Testing
+```bash
+# First resolve DNS
+netcheck -d myserver.com
+
+# Then test connectivity
+netcheck -q myserver.com 443
+```
+
+---
+
+## 3. Quick Mode Examples
 
 ### Single Port Check
 ```bash
 netcheck -q google.com 443
+netcheck -q 192.168.1.1 80
 ```
 
 ### Multiple Ports
@@ -25,9 +86,17 @@ netcheck -q server.local 20-25
 netcheck -q localhost 8000-8100
 ```
 
+### IP Range with Quick Mode (NEW!)
+```bash
+# Test multiple hosts at once
+netcheck -q 10.90.95.72-75 50000
+netcheck -q 192.168.1.1-10 22
+netcheck -q 172.16.0.1-5 80,443
+```
+
 ---
 
-## 2. CSV Input Examples
+## 4. CSV Input Examples
 
 ### Basic CSV File
 ```csv
@@ -67,7 +136,7 @@ EOF
 
 ---
 
-## 3. Space-Separated Format (Traditional)
+## 5. Space-Separated Format (Traditional)
 
 ### File Format
 ```
@@ -78,6 +147,35 @@ google.com 443
 localhost 80,443,3306
 server.com 8000-8100
 ```
+
+**Usage:**
+```bash
+netcheck hosts.txt
+cat hosts.txt | netcheck -V  # Verbose mode
+```
+
+---
+
+## 6. Verbose Mode
+
+### Enable Detailed Output
+```bash
+# Note: Use capital -V for verbose
+netcheck -V hosts.txt
+echo "google.com 443" | netcheck -V
+netcheck --csv servers.csv -V
+```
+
+Shows detailed information:
+- Start date/time
+- Configuration settings
+- Real-time progress
+- Success/failure status
+- Summary statistics
+
+---
+
+## 7. Real-World Scenarios
 
 **Usage:**
 ```bash
@@ -221,7 +319,7 @@ done | netcheck -j 100 -f csv | grep SUCCESS | cut -d',' -f2
 
 ---
 
-## 6. Format Comparison
+## 8. Format Comparison
 
 | Format | Syntax | Use Case |
 |--------|--------|----------|
@@ -232,10 +330,12 @@ done | netcheck -j 100 -f csv | grep SUCCESS | cut -d',' -f2
 | Range | `host 80-100` | Port scanning |
 | IP Range | `192.168.1.1-50 80` | Subnet checks |
 | CIDR | `10.0.0.0/24 80` | Network scans |
+| DNS | `-d host` | Resolve to IP |
+| Version | `-v` | Check tool version |
 
 ---
 
-## 7. Performance Tips
+## 9. Performance Tips
 
 ```bash
 # Slow: Sequential (default 10 parallel)
@@ -281,10 +381,19 @@ xmllint --format result.txt
 
 ## Summary
 
+**Version & Help:**
+- `-v` or `--version` - Show version
+- `-h` or `--help` - Show help
+
+**DNS Lookup:**
+- `-d google.com` - Resolve DNS to IP
+- Shows IPv4, IPv6, aliases, reverse DNS
+
 **Quick Tests:**
 - `-q host 80` - Single port
 - `-q host 80,443` - Multiple ports  
 - `-q host 80-100` - Port range
+- `-q 10.0.0.1-10 80` - IP range (NEW!)
 
 **CSV Input:**
 - `--csv file.csv` - Read CSV file
@@ -295,5 +404,12 @@ xmllint --format result.txt
 - `10.0.0.0/24` - CIDR notation
 - `80,443,8080` - Multiple ports
 - `8000-8100` - Port range
+
+**Other Options:**
+- `-V` - Verbose mode (capital V, not lowercase)
+- `-f json|csv|xml` - Output formats
+- `-j 100` - High parallelism
+- `-t 3` - Custom timeout
+- `-c` - Combined reports
 
 **All features work together!**

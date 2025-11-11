@@ -232,7 +232,7 @@ sudo snap install netcheck
 - [ ] Update version number in all files
 - [ ] Update README.md with installation instructions
 - [ ] Create GitHub repository (if not exists)
-- [ ] Add LICENSE file (e.g., MIT)
+- [ ] Add LICENSE file (GPL v3 included)
 - [ ] Test installation on clean system
 
 ### DEB Package
