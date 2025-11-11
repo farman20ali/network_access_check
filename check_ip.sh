@@ -6,7 +6,7 @@
 # Input format: Each line should contain IP/hostname and port separated by space
 # Example: 192.168.1.1 80
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 set -u
 
@@ -243,8 +243,17 @@ parse_args() {
                     echo ""
                     echo "✅ Ping successful"
                 else
+                    ping_exit=$?
                     echo ""
-                    echo "❌ Ping failed (host unreachable or no response)"
+                    # Check if running in snap and show helpful message
+                    if [[ "$0" == *"/snap/"* ]] && [[ $ping_exit -eq 126 || $ping_exit -eq 127 ]]; then
+                        echo "❌ Ping failed - Permission denied"
+                        echo ""
+                        echo "To enable ping in snap, run:"
+                        echo "  sudo snap connect netcheck:network-observe"
+                    else
+                        echo "❌ Ping failed (host unreachable or no response)"
+                    fi
                     exit 1
                 fi
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

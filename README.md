@@ -4,15 +4,17 @@ A powerful, feature-rich command-line tool for testing network connectivity to m
 
 ## Features
 
+- ✅ **ICMP Ping Testing** - Test connectivity with ping (accepts URLs and IPs)
+- ✅ **DNS Lookup** - Resolve hostnames to IPs with multiple fallback methods (accepts URLs)
 - ✅ **Parallel Processing** - Check multiple hosts simultaneously (up to 256 jobs)
 - ✅ **Multiple Output Formats** - Text, JSON, CSV, XML
 - ✅ **Quick Test Mode** - Test single host without creating files
 - ✅ **IP Range Support** - Check IP ranges (192.168.1.1-50) and CIDR (10.0.0.0/24)
 - ✅ **Port Ranges** - Check port ranges (8000-8100) or multiple ports (80,443,8080)
 - ✅ **CSV File Support** - Read from CSV files (host,port format)
-- ✅ **DNS Lookup** - Resolve hostnames to IP addresses with reverse DNS
 - ✅ **Progress Bar** - Real-time progress tracking
 - ✅ **Response Time Measurement** - See connection latency in milliseconds
+- ✅ **Dated Result Files** - Automatic timestamped output files
 - ✅ **Version Information** - Check tool version with -v flag
 - ✅ **Input Validation** - Prevents hanging with helpful error messages
 - ✅ **Automatic Dependency Installation** - Installs telnet and netcat if missing
@@ -28,7 +30,14 @@ A powerful, feature-rich command-line tool for testing network connectivity to m
 sudo snap install netcheck
 ```
 
+**Enable ping functionality (required for `-p` flag):**
+```bash
+sudo snap connect netcheck:network-observe
+```
+
 **Benefits:** Auto-updates, universal Linux support, sandboxed security
+
+> **Note:** The `network-observe` connection is required for ICMP ping tests. Without it, the `-p/--ping` flag will fail with a permission error. All other features (TCP port tests, DNS lookup) work without this connection.
 
 ### Option 2: DEB Package (Ubuntu/Debian)
 
@@ -95,7 +104,22 @@ netcheck -q 192.168.1.1-10 22
 # Resolve hostname to IP addresses
 netcheck -d google.com
 netcheck -d github.com
-netcheck -d example.com
+
+# NEW: Also accepts URLs (strips scheme/path automatically)
+netcheck -d https://api.example.com
+netcheck -d http://services.company.com:8080/path
+```
+
+### ICMP Ping Test
+
+```bash
+# Ping a host (4 packets with statistics)
+netcheck -p 8.8.8.8
+netcheck -p google.com
+
+# NEW: Also accepts URLs (strips scheme/path automatically)
+netcheck -p https://github.com
+netcheck -p http://api.example.com
 ```
 
 Output:
@@ -208,7 +232,8 @@ OPTIONS:
     -f, --format <format>       Output format: text, json, csv, xml (default: text)
     -c, --combined              Create combined report with all results
     -q, --quick <host> <port>   Quick test mode (no files created)
-    -d, --dns <hostname>        Resolve DNS and show IP address
+    -d, --dns <hostname>        Resolve DNS and show IP address (accepts URLs)
+    -p, --ping <host>           Ping host using ICMP (accepts URLs/IPs)
     -v, --version               Show version information
     -h, --help                  Show help message
 ```
@@ -231,6 +256,26 @@ echo "google.com 443" | netcheck -V
 ### DNS Resolution
 ```bash
 # Lookup hostname
+netcheck -d google.com
+netcheck -d github.com
+
+# Works with URLs too (strips http://, https://, paths)
+netcheck -d https://api.example.com
+netcheck -d http://services.company.com:8080/api/v1
+```
+
+### ICMP Ping
+```bash
+# Ping IP address
+netcheck -p 8.8.8.8
+netcheck -p 192.168.1.1
+
+# Ping hostname
+netcheck -p google.com
+
+# Works with URLs too
+netcheck -p https://github.com
+```
 netcheck -d google.com
 netcheck -d github.com
 

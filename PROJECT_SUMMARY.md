@@ -5,7 +5,9 @@
 A **production-ready network connectivity testing tool** with enterprise features!
 
 ```
-✅ Full-featured bash script (800+ lines)
+✅ Full-featured bash script (900+ lines)
+✅ ICMP ping testing with statistics
+✅ DNS lookup with URL support
 ✅ 3 installation methods (manual, DEB, Snap)
 ✅ Complete documentation (9 guides)
 ✅ Build automation (Makefile + scripts)
@@ -13,7 +15,7 @@ A **production-ready network connectivity testing tool** with enterprise feature
 ✅ Man page & bash completion
 ✅ Multi-OS support (6 Linux distributions)
 ✅ Version 1.0.0 - GPL v3 licensed
-✅ DNS resolution & input validation
+✅ Dated result files for tracking
 ```
 
 ---

@@ -32,20 +32,29 @@ netcheck -d github.com
 netcheck -d example.com
 ```
 
+### DNS from URLs (NEW!)
+```bash
+# Automatically strips http://, https://, paths, and ports
+netcheck -d https://api.example.com
+netcheck -d http://services.company.com:8080/api/v1
+netcheck -d https://github.com/user/repo
+
+# All of these resolve just the hostname
+```
+
 Output:
 ```
-DNS Lookup for: google.com
+DNS Lookup for: https://api.example.com
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Hostname: google.com
+Hostname: api.example.com
 
 IP Addresses:
-  142.250.202.78
-  2a00:1450:4019:812::200e (IPv6)
+  93.184.216.34
 
 Aliases:
 
 Reverse DNS:
-  pnfjra-an-in-f14.1e100.net.
+  example.com.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -60,7 +69,52 @@ netcheck -q myserver.com 443
 
 ---
 
-## 3. Quick Mode Examples
+## 3. ICMP Ping Examples
+
+### Basic Ping
+```bash
+# Ping IP address
+netcheck -p 8.8.8.8
+netcheck -p 192.168.1.1
+
+# Ping hostname
+netcheck -p google.com
+netcheck -p github.com
+```
+
+### Ping from URLs (NEW!)
+```bash
+# Automatically strips http://, https://, paths, and ports
+netcheck -p https://github.com
+netcheck -p http://api.example.com:8080
+netcheck -p https://services.company.com/api
+```
+
+Output:
+```
+ICMP Ping Test for: https://github.com
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Target: github.com
+
+Sending 4 ICMP packets...
+
+PING github.com (20.207.73.82) 56(84) bytes of data.
+64 bytes from 20.207.73.82: icmp_seq=1 ttl=51 time=45.2 ms
+64 bytes from 20.207.73.82: icmp_seq=2 ttl=51 time=43.8 ms
+64 bytes from 20.207.73.82: icmp_seq=3 ttl=51 time=44.1 ms
+64 bytes from 20.207.73.82: icmp_seq=4 ttl=51 time=43.9 ms
+
+--- github.com ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3005ms
+rtt min/avg/max/mdev = 43.823/44.250/45.234/0.556 ms
+
+✅ Ping successful
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+---
+
+## 4. Quick Mode Examples
 
 ### Single Port Check
 ```bash

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 PACKAGE_NAME="netcheck"
 BUILD_DIR="${PACKAGE_NAME}_${VERSION}"
 
@@ -48,9 +48,9 @@ done
 # Create man page
 echo "Creating man page..."
 cat << 'MANEOF' > /tmp/netcheck.1
-.TH NETCHECK 1 "November 2025" "netcheck 1.0.0" "User Commands"
+.TH NETCHECK 1 "November 2025" "netcheck 1.1.0" "User Commands"
 .SH NAME
-netcheck \- network connectivity checker with advanced features
+netcheck \- network connectivity checker with DNS, ping, and port testing
 .SH SYNOPSIS
 .B netcheck
 [\fIOPTIONS\fR] [\fIFILE\fR]
@@ -60,10 +60,18 @@ netcheck \- network connectivity checker with advanced features
 .I HOST PORT
 .br
 .B netcheck
+.B \-d
+.I HOSTNAME
+.br
+.B netcheck
+.B \-p
+.I HOST
+.br
+.B netcheck
 .B \-\-csv
 .I FILE
 .SH DESCRIPTION
-A powerful bash-based network connectivity testing tool that supports parallel processing, IP ranges, port ranges, CSV input, and multiple output formats.
+A powerful bash-based network connectivity testing tool that supports ICMP ping, DNS resolution with URL support, parallel TCP testing, IP ranges, port ranges, CSV input, and multiple output formats.
 .SH OPTIONS
 .TP
 .BR \-t ", " \-\-timeout " " \fISECONDS\fR
@@ -72,7 +80,7 @@ Connection timeout in seconds (default: 5)
 .BR \-j ", " \-\-jobs " " \fINUMBER\fR
 Number of parallel jobs (default: 10, max: 256)
 .TP
-.BR \-v ", " \-\-verbose
+.BR \-V ", " \-\-verbose
 Enable verbose output with detailed connection attempts
 .TP
 .BR \-f ", " \-\-format " " \fIFORMAT\fR
@@ -86,14 +94,24 @@ Quick test mode - test a single host and port immediately
 .br
 PORT can be: single (80), multiple (80,443), or range (8000-8100)
 .TP
+.BR \-d ", " \-\-dns " " \fIHOST\fR
+Resolve DNS and show IP addresses (accepts URLs)
+.br
+Automatically strips http://, https://, paths, and ports
+.TP
+.BR \-p ", " \-\-ping " " \fIHOST\fR
+Ping host using ICMP (4 packets, 2s timeout per packet)
+.br
+Accepts IP addresses, hostnames, and URLs
+.TP
 .BR \-\-csv " " \fIFILE\fR
 Read hosts from CSV file (format: host,port)
 .TP
+.BR \-v ", " \-\-version
+Display version information and exit
+.TP
 .BR \-h ", " \-\-help
 Display help message and exit
-.TP
-.BR \-\-version
-Display version information and exit
 .SH INPUT FORMATS
 .SS Space-Separated Format
 .nf
@@ -118,6 +136,12 @@ server2.com,"80,443"
 192.168.1.0/24,22
 .fi
 .SH EXAMPLES
+.TP
+DNS lookup (accepts URLs):
+.B netcheck \-d https://api.example.com
+.TP
+Ping test (accepts URLs):
+.B netcheck \-p https://github.com
 .TP
 Quick test single port:
 .B netcheck \-q google.com 443
@@ -154,14 +178,14 @@ Comma-separated values for spreadsheets
 XML format for system integration
 .SH FILES
 .TP
-.I result.txt
-Main results file (format depends on \-f option)
+.I result-YYYY-MM-DD.txt
+Main results file (format depends on \-f option, includes date)
 .TP
-.I fail-*.txt
-Failed connections list (created for each run)
+.I fail-YYYY-MM-DD.txt
+Failed connections list (created for each run, dated)
 .TP
-.I combined-*.txt
-Combined report (created with \-c option)
+.I combined-YYYY-MM-DD.txt
+Combined report (created with \-c option, dated)
 .SH EXIT STATUS
 .TP
 .B 0
@@ -170,7 +194,11 @@ All connections successful
 .B 1
 Some or all connections failed
 .SH NOTES
-Requires either \fBtelnet\fR or \fBnetcat\fR (nc) to be installed.
+Requires \fBtelnet\fR or \fBnetcat\fR (nc) for TCP port testing.
+.PP
+DNS resolution uses multiple fallback methods: host, getent, dig, nslookup.
+.PP
+ICMP ping requires appropriate network permissions (works in snap with network-observe plug).
 .PP
 Port ranges are limited to 1000 ports to prevent excessive scanning.
 .PP
@@ -179,11 +207,14 @@ Progress bar updates in real-time during parallel processing.
 .BR telnet (1),
 .BR nc (1),
 .BR ping (1),
+.BR host (1),
 .BR nmap (1)
 .SH AUTHOR
 Network Access Check Tool
+.SH LICENSE
+GNU GPL v3 - https://www.gnu.org/licenses/gpl-3.0.html
 .SH REPORTING BUGS
-Report bugs to your issue tracker or maintainer.
+https://github.com/farman20ali/network_access_check/issues
 MANEOF
 
 gzip -9c /tmp/netcheck.1 > "${BUILD_DIR}/usr/share/man/man1/netcheck.1.gz"

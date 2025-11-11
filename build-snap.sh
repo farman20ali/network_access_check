@@ -27,8 +27,8 @@ if [ ! -f "snap/snapcraft.yaml" ]; then
     echo "Creating snapcraft.yaml..."
     cat << 'EOF' > snap/snapcraft.yaml
 name: netcheck
-version: '1.0.0'
-summary: Network connectivity checker with advanced features
+version: '1.1.0'
+summary: Network connectivity checker with DNS, ping, and port testing
 title: NetCheck - Network Connectivity Tester
 icon: snap/gui/icon.png
 license: GPL-3.0
@@ -39,7 +39,9 @@ contact: https://github.com/farman20ali/network_access_check/issues
 description: |
   A powerful bash-based network connectivity testing tool that supports:
   
-  - Parallel connection testing (up to 256 concurrent jobs)
+  - ICMP ping testing with statistics
+  - DNS lookup with multiple fallback methods (accepts URLs)
+  - Parallel TCP connection testing (up to 256 concurrent jobs)
   - IP range support (192.168.1.1-50)
   - CIDR notation (10.0.0.0/24)
   - Port ranges (8000-8100) and multiple ports (80,443,3306)
@@ -47,14 +49,22 @@ description: |
   - Multiple output formats (text, JSON, CSV, XML)
   - Quick test mode for one-off checks
   - Real-time progress tracking
-  - Combined reports for failed connections
+  - Combined reports with dated filenames
   
   Perfect for:
   - System administrators monitoring infrastructure
   - DevOps engineers validating deployments
   - Network diagnostics and troubleshooting
+  - DNS resolution verification
+  - ICMP connectivity testing
   - Security auditing and port scanning
   - Load balancer health checks
+  
+  IMPORTANT: For ICMP ping functionality (-p flag), run after installation:
+    sudo snap connect netcheck:network-observe
+  
+  Without this connection, TCP port tests and DNS lookup work normally,
+  but ping tests will fail with permission errors.
 
 grade: stable
 confinement: strict
@@ -72,6 +82,7 @@ apps:
     plugs:
       - network
       - network-bind
+      - network-observe
       - home
     environment:
       LC_ALL: C.UTF-8
@@ -96,6 +107,7 @@ parts:
       - grep
       - sed
       - dnsutils
+      - iputils-ping
 EOF
     echo "✅ snapcraft.yaml created"
 fi
@@ -140,10 +152,16 @@ if [ -f "$SNAP_FILE" ]; then
     echo "1. Install locally (devmode for testing):"
     echo "   sudo snap install $SNAP_FILE --devmode --dangerous"
     echo ""
+    echo "1b. Enable ping functionality (REQUIRED for -p flag):"
+    echo "   sudo snap connect netcheck:network-observe"
+    echo ""
     echo "2. Test the command:"
     echo "   netcheck --help"
-    echo "   netcheck -q google.com 443"
-    echo "   netcheck --csv hosts.csv"
+    echo "   netcheck -v                    # Check version"
+    echo "   netcheck -q google.com 443     # Quick test"
+    echo "   netcheck -d https://github.com # DNS lookup"
+    echo "   netcheck -p 8.8.8.8            # Ping test"
+    echo "   netcheck --csv hosts.csv       # CSV mode"
     echo ""
     echo "3. Check logs if issues:"
     echo "   snap logs netcheck"
