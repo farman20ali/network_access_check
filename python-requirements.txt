@@ -1,0 +1,4 @@
+# No external dependencies required - uses Python standard library
+# Optional packages you can install if you extend the tool:
+# colorama==0.4.6        # cross-platform terminal colors (optional)
+# anyio==3.7.0           # if converting to async frameworks

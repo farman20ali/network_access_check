@@ -20,6 +20,10 @@ result.json
 result.csv
 result.xml
 fail-*.txt
+result-*.txt
+result*.json
+result*.csv
+result*.xml
 combined-*.txt
 
 # Temporary files
