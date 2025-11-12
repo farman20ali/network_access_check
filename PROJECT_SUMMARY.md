@@ -5,16 +5,19 @@
 A **production-ready network connectivity testing tool** with enterprise features!
 
 ```
-✅ Full-featured bash script (900+ lines)
-✅ ICMP ping testing with statistics
+✅ Full-featured bash script (1100+ lines)
+✅ ICMP ping testing with statistics and URL support
 ✅ DNS lookup with URL support
+✅ Quick mode parallel processing (>5 tests)
+✅ Quick mode output file support (-o flag)
+✅ Comprehensive input validation
 ✅ 3 installation methods (manual, DEB, Snap)
-✅ Complete documentation (9 guides)
+✅ Complete documentation (10 guides)
 ✅ Build automation (Makefile + scripts)
-✅ Test suites (14/14 tests passing)
+✅ Test suites (all passing)
 ✅ Man page & bash completion
 ✅ Multi-OS support (6 Linux distributions)
-✅ Version 1.0.0 - GPL v3 licensed
+✅ Version 1.1.0 - GPL v3 licensed
 ✅ Dated result files for tracking
 ```
 
@@ -362,19 +365,20 @@ netcheck --help
 
 ## 🏆 What Makes This Professional?
 
-✅ **Complete Documentation** - 9 guides covering all aspects
+✅ **Complete Documentation** - 10 guides covering all aspects
 ✅ **Multiple Installation Methods** - Manual, DEB, Snap
 ✅ **Build Automation** - Makefile + build scripts
-✅ **Test Coverage** - 14 automated tests
+✅ **Test Coverage** - Multiple automated test suites
 ✅ **Man Page** - Professional documentation
 ✅ **Bash Completion** - Tab completion support
 ✅ **Multi-OS Support** - 6 Linux distributions
-✅ **Enterprise Features** - Parallel processing, multiple formats
+✅ **Enterprise Features** - Parallel processing, multiple formats, quick mode parallel
 ✅ **Production Ready** - Error handling, validation, logging
 ✅ **Open Source** - GPL v3 license (copyleft protection)
-✅ **DNS Resolution** - Built-in DNS lookup capability
-✅ **Input Validation** - Prevents errors with helpful messages
-✅ **Version Control** - Semantic versioning (1.0.0)
+✅ **DNS & Ping** - Built-in DNS lookup and ICMP ping with URL support
+✅ **Input Validation** - Comprehensive validation with helpful warnings
+✅ **Quick Mode Output** - Save results to file with -o flag
+✅ **Version Control** - Semantic versioning (1.1.0)
 
 ---
 

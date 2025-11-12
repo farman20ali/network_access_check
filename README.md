@@ -7,6 +7,8 @@ A powerful, feature-rich command-line tool for testing network connectivity to m
 - ✅ **ICMP Ping Testing** - Test connectivity with ping (accepts URLs and IPs)
 - ✅ **DNS Lookup** - Resolve hostnames to IPs with multiple fallback methods (accepts URLs)
 - ✅ **Parallel Processing** - Check multiple hosts simultaneously (up to 256 jobs)
+- ✅ **Quick Mode Parallel Processing** - Automatic parallel execution for wide IP ranges (>5 tests)
+- ✅ **Quick Mode Output File** - Save quick mode results with -o/--output flag
 - ✅ **Multiple Output Formats** - Text, JSON, CSV, XML
 - ✅ **Quick Test Mode** - Test single host without creating files
 - ✅ **IP Range Support** - Check IP ranges (192.168.1.1-50) and CIDR (10.0.0.0/24)
@@ -16,7 +18,7 @@ A powerful, feature-rich command-line tool for testing network connectivity to m
 - ✅ **Response Time Measurement** - See connection latency in milliseconds
 - ✅ **Dated Result Files** - Automatic timestamped output files
 - ✅ **Version Information** - Check tool version with -v flag
-- ✅ **Input Validation** - Prevents hanging with helpful error messages
+- ✅ **Input Validation** - Comprehensive validation with helpful warnings for malformed input
 - ✅ **Automatic Dependency Installation** - Installs telnet and netcat if missing
 - ✅ **Flexible Input** - File, stdin, or quick test mode
 - ✅ **Man Page & Tab Completion** - Full documentation and bash completion
@@ -568,6 +570,7 @@ done
 
 - **[README.md](README.md)** - Main documentation (this file)
 - **[EXAMPLES.md](EXAMPLES.md)** - Comprehensive examples and real-world scenarios
+- **[INPUT_VALIDATION.md](INPUT_VALIDATION.md)** - Input format and validation guide
 - **[INSTALL.md](INSTALL.md)** - Installation instructions
 - **[MAKEFILE_GUIDE.md](MAKEFILE_GUIDE.md)** - Understanding the Makefile
 - **[DEB_PACKAGING.md](DEB_PACKAGING.md)** - How to create DEB packages

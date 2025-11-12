@@ -19,6 +19,7 @@ INPUT_FILE=""
 COMBINED_REPORT=0
 QUICK_TEST=0
 CSV_INPUT=0
+QUICK_OUTPUT_FILE=""
 
 # Show help
 show_help() {
@@ -40,6 +41,7 @@ OPTIONS:
     -f, --format <format>       Output format: text, json, csv, xml (default: text)
     -c, --combined              Create combined report with all results
     -q, --quick <host> <port>   Quick test mode (supports ranges: 80,443 or 8000-8100)
+    -o, --output <file>         Save quick mode results to file
     -d, --dns <host>            Resolve DNS and show IP address (accepts URLs)
     -p, --ping <host>           Ping host using ICMP (accepts URLs/IPs)
     --csv                       Input file is in CSV format (host,port)
@@ -60,6 +62,8 @@ EXAMPLES:
     $cmd_name -q 192.168.1.1 80                    # Quick test single port
     $cmd_name -q google.com 80,443                 # Quick test multiple ports
     $cmd_name -q 10.0.0.1-50 22                    # Quick test IP range
+    $cmd_name -q 192.168.1.90-95 22 -o results.txt # Save quick mode to file
+    $cmd_name -q 10.0.0.1-100 22 -j 20             # Quick mode with parallel jobs
     $cmd_name -d google.com                        # Resolve DNS to IP
     $cmd_name -d https://api.example.com           # DNS from URL (strips scheme/path)
     $cmd_name -p 8.8.8.8                           # Ping Google DNS
@@ -119,6 +123,14 @@ parse_args() {
             --csv)
                 CSV_INPUT=1
                 shift
+                ;;
+            -o|--output)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: -o/--output requires <file> argument" >&2
+                    exit 1
+                fi
+                QUICK_OUTPUT_FILE="$2"
+                shift 2
                 ;;
             -q|--quick)
                 if [[ $# -lt 3 ]]; then
@@ -381,16 +393,54 @@ expand_line() {
     local line=$1
     local expanded_lines=()
     
-    # Parse line into IP and port parts
+    # Trim leading/trailing whitespace
+    line=$(echo "$line" | xargs)
+    
+    # Skip empty lines
+    [[ -z "$line" ]] && return
+    
+    # Skip comment lines
+    [[ "$line" =~ ^# ]] && return
+    
+    # Remove inline comments (anything after #)
+    line="${line%%#*}"
+    line=$(echo "$line" | xargs)  # Trim again after removing comment
+    
+    # Skip if line became empty after removing comment
+    [[ -z "$line" ]] && return
+    
+    # Parse line into IP and port parts (handle multiple spaces)
     IFS=' ' read -ra parts <<< "$line"
     
-    if [[ ${#parts[@]} -lt 2 ]]; then
-        echo "Warning: Invalid line format: $line" >&2
+    # Filter out empty elements from multiple spaces
+    filtered_parts=()
+    for part in "${parts[@]}"; do
+        [[ -n "$part" ]] && filtered_parts+=("$part")
+    done
+    
+    if [[ ${#filtered_parts[@]} -lt 2 ]]; then
+        echo "Warning: Invalid line format (missing host or port): $line" >&2
         return
     fi
     
-    local ip_pattern="${parts[0]}"
-    local port_pattern="${parts[1]}"
+    if [[ ${#filtered_parts[@]} -gt 2 ]]; then
+        echo "Warning: Extra fields in line (ignoring extras): $line" >&2
+    fi
+    
+    local ip_pattern="${filtered_parts[0]}"
+    local port_pattern="${filtered_parts[1]}"
+    
+    # Validate IP pattern (basic check)
+    if [[ ! "$ip_pattern" =~ ^[a-zA-Z0-9.:/_-]+$ ]]; then
+        echo "Warning: Invalid host/IP format: $ip_pattern" >&2
+        return
+    fi
+    
+    # Validate port pattern (basic check)
+    if [[ ! "$port_pattern" =~ ^[0-9,:-]+$ ]]; then
+        echo "Warning: Invalid port format: $port_pattern" >&2
+        return
+    fi
     
     # Expand IPs
     local ips=()
@@ -398,11 +448,31 @@ expand_line() {
         ips+=("$ip")
     done < <(expand_ip_range "$ip_pattern")
     
+    # Check if IP expansion failed
+    if [[ ${#ips[@]} -eq 0 ]]; then
+        echo "Warning: Could not expand IP pattern: $ip_pattern" >&2
+        return
+    fi
+    
     # Expand ports
     local ports=()
     while IFS= read -r port; do
         ports+=("$port")
     done < <(expand_port_range "$port_pattern")
+    
+    # Check if port expansion failed
+    if [[ ${#ports[@]} -eq 0 ]]; then
+        echo "Warning: Could not expand port pattern: $port_pattern" >&2
+        return
+    fi
+    
+    # Validate all ports are numeric and in range
+    for port in "${ports[@]}"; do
+        if ! [[ "$port" =~ ^[0-9]+$ ]] || [[ "$port" -lt 1 ]] || [[ "$port" -gt 65535 ]]; then
+            echo "Warning: Invalid port number: $port (from pattern: $port_pattern)" >&2
+            return
+        fi
+    done
     
     # Create combinations
     for ip in "${ips[@]}"; do
@@ -442,6 +512,7 @@ if [[ $QUICK_TEST -eq 1 ]]; then
     echo "Host: $QUICK_HOST"
     echo "Port(s): $QUICK_PORT"
     echo "Timeout: ${TIMEOUT}s"
+    echo "Parallel Jobs: $MAX_JOBS"
     echo ""
     
     # Expand IP addresses if it's a range
@@ -470,76 +541,228 @@ if [[ $QUICK_TEST -eq 1 ]]; then
     success_count=0
     fail_count=0
     
-    if [[ $total_hosts -gt 1 ]]; then
+    if [[ $total_hosts -gt 1 ]] || [[ $total_ports -gt 1 ]]; then
         echo "Expanded to ${total_hosts} host(s) and ${total_ports} port(s) = ${total_tests} total tests"
-        echo ""
-    else
-        echo "Testing ${total_ports} port(s)..."
         echo ""
     fi
     
-    # Test each host and port combination
-    for test_host in "${test_hosts[@]}"; do
-        for test_port in "${test_ports[@]}"; do
-            # Try telnet first
-            TELNET_EXIT_CODE=1
-            NC_EXIT_CODE=1
-            
+    # Create temp directory for parallel processing if needed
+    QUICK_TEMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$QUICK_TEMP_DIR"' EXIT
+    
+    # Prepare output file if requested
+    if [[ -n "$QUICK_OUTPUT_FILE" ]]; then
+        echo "Quick Test Results - $(date)" > "$QUICK_OUTPUT_FILE"
+        echo "Host: $QUICK_HOST" >> "$QUICK_OUTPUT_FILE"
+        echo "Port(s): $QUICK_PORT" >> "$QUICK_OUTPUT_FILE"
+        echo "Total Tests: $total_tests" >> "$QUICK_OUTPUT_FILE"
+        echo "======================================" >> "$QUICK_OUTPUT_FILE"
+        echo "" >> "$QUICK_OUTPUT_FILE"
+    fi
+    
+    # Function to test a single host:port combination
+    test_single_quick() {
+        local test_host=$1
+        local test_port=$2
+        local temp_dir=$3
+        local result_file="${temp_dir}/result_${test_host}_${test_port}.txt"
+        
+        # Try telnet first
+        TELNET_EXIT_CODE=1
+        NC_EXIT_CODE=1
+        
+        start_time=$(date +%s%N)
+        (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$test_host" "$test_port" > /dev/null 2>&1 < /dev/null
+        TELNET_EXIT_CODE=$?
+        end_time=$(date +%s%N)
+        
+        # If telnet fails, try netcat
+        if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
             start_time=$(date +%s%N)
-            (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$test_host" "$test_port" > /dev/null 2>&1 < /dev/null
-            TELNET_EXIT_CODE=$?
+            nc -w "$TIMEOUT" -z "$test_host" "$test_port" > /dev/null 2>&1
+            NC_EXIT_CODE=$?
             end_time=$(date +%s%N)
-            
-            # If telnet fails, try netcat
-            if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
-                start_time=$(date +%s%N)
-                nc -w "$TIMEOUT" -z "$test_host" "$test_port" > /dev/null 2>&1
-                NC_EXIT_CODE=$?
-                end_time=$(date +%s%N)
-            fi
-            
-            # Calculate response time in milliseconds
-            response_time=$(( (end_time - start_time) / 1000000 ))
-            
-            # Display result
-            echo "┌─────────────────────────────────────────────┐"
-            printf "│ %-43s │\n" "Host: $test_host"
-            printf "│ %-43s │\n" "Port: $test_port"
-            echo "├─────────────────────────────────────────────┤"
-            
-            if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
-                method="telnet"
-                [[ $NC_EXIT_CODE -eq 0 ]] && method="netcat"
-                
-                printf "│ Status: \033[0;32m%-34s\033[0m │\n" "✓ CONNECTED"
-                printf "│ %-43s │\n" "Method: $method"
-                printf "│ %-43s │\n" "Response Time: ${response_time}ms"
-                echo "└─────────────────────────────────────────────┘"
-                ((success_count++))
-            else
-                printf "│ Status: \033[0;31m%-34s\033[0m │\n" "✗ FAILED"
-                printf "│ %-43s │\n" "Reason: Connection timeout or refused"
-                printf "│ %-43s │\n" "Attempted Time: ${response_time}ms"
-                echo "└─────────────────────────────────────────────┘"
-                ((fail_count++))
-            fi
-            echo ""
+        fi
+        
+        # Calculate response time in milliseconds
+        response_time=$(( (end_time - start_time) / 1000000 ))
+        
+        # Write result to temp file
+        if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
+            method="telnet"
+            [[ $NC_EXIT_CODE -eq 0 ]] && method="netcat"
+            echo "SUCCESS|$test_host|$test_port|$method|$response_time" > "$result_file"
+        else
+            echo "FAILED|$test_host|$test_port|timeout|$response_time" > "$result_file"
+        fi
+    }
+    
+    # Export function and variables for parallel execution
+    export -f test_single_quick
+    export TIMEOUT
+    
+    # Decide whether to use parallel processing
+    # Use parallel for more than 5 tests
+    if [[ $total_tests -gt 5 ]]; then
+        echo "Running tests in parallel (max $MAX_JOBS jobs)..."
+        echo ""
+        
+        # Create array of all host:port combinations
+        test_combinations=()
+        for test_host in "${test_hosts[@]}"; do
+            for test_port in "${test_ports[@]}"; do
+                test_combinations+=("$test_host:$test_port")
+            done
         done
-    done
+        
+        # Run tests in parallel using xargs
+        job_count=0
+        for combination in "${test_combinations[@]}"; do
+            test_host="${combination%%:*}"
+            test_port="${combination##*:}"
+            test_single_quick "$test_host" "$test_port" "$QUICK_TEMP_DIR" &
+            
+            ((job_count++))
+            # Limit parallel jobs
+            if [[ $((job_count % MAX_JOBS)) -eq 0 ]]; then
+                wait
+            fi
+        done
+        
+        # Wait for remaining jobs
+        wait
+        
+        # Collect and display results
+        for test_host in "${test_hosts[@]}"; do
+            for test_port in "${test_ports[@]}"; do
+                result_file="${QUICK_TEMP_DIR}/result_${test_host}_${test_port}.txt"
+                if [[ -f "$result_file" ]]; then
+                    IFS='|' read -r status host port method response_time < "$result_file"
+                    
+                    echo "┌─────────────────────────────────────────────┐"
+                    printf "│ %-43s │\n" "Host: $host"
+                    printf "│ %-43s │\n" "Port: $port"
+                    echo "├─────────────────────────────────────────────┤"
+                    
+                    if [[ "$status" == "SUCCESS" ]]; then
+                        printf "│ Status: \033[0;32m%-34s\033[0m │\n" "✓ CONNECTED"
+                        printf "│ %-43s │\n" "Method: $method"
+                        printf "│ %-43s │\n" "Response Time: ${response_time}ms"
+                        echo "└─────────────────────────────────────────────┘"
+                        ((success_count++))
+                        
+                        # Write to output file if requested
+                        if [[ -n "$QUICK_OUTPUT_FILE" ]]; then
+                            echo "✓ $host:$port - CONNECTED ($method, ${response_time}ms)" >> "$QUICK_OUTPUT_FILE"
+                        fi
+                    else
+                        printf "│ Status: \033[0;31m%-34s\033[0m │\n" "✗ FAILED"
+                        printf "│ %-43s │\n" "Reason: Connection timeout or refused"
+                        printf "│ %-43s │\n" "Attempted Time: ${response_time}ms"
+                        echo "└─────────────────────────────────────────────┘"
+                        ((fail_count++))
+                        
+                        # Write to output file if requested
+                        if [[ -n "$QUICK_OUTPUT_FILE" ]]; then
+                            echo "✗ $host:$port - FAILED (${response_time}ms)" >> "$QUICK_OUTPUT_FILE"
+                        fi
+                    fi
+                    echo ""
+                fi
+            done
+        done
+    else
+        # Sequential processing for small number of tests
+        echo "Running tests sequentially..."
+        echo ""
+        
+        for test_host in "${test_hosts[@]}"; do
+            for test_port in "${test_ports[@]}"; do
+                # Try telnet first
+                TELNET_EXIT_CODE=1
+                NC_EXIT_CODE=1
+                
+                start_time=$(date +%s%N)
+                (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$test_host" "$test_port" > /dev/null 2>&1 < /dev/null
+                TELNET_EXIT_CODE=$?
+                end_time=$(date +%s%N)
+                
+                # If telnet fails, try netcat
+                if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
+                    start_time=$(date +%s%N)
+                    nc -w "$TIMEOUT" -z "$test_host" "$test_port" > /dev/null 2>&1
+                    NC_EXIT_CODE=$?
+                    end_time=$(date +%s%N)
+                fi
+                
+                # Calculate response time in milliseconds
+                response_time=$(( (end_time - start_time) / 1000000 ))
+                
+                # Display result
+                echo "┌─────────────────────────────────────────────┐"
+                printf "│ %-43s │\n" "Host: $test_host"
+                printf "│ %-43s │\n" "Port: $test_port"
+                echo "├─────────────────────────────────────────────┤"
+                
+                if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
+                    method="telnet"
+                    [[ $NC_EXIT_CODE -eq 0 ]] && method="netcat"
+                    
+                    printf "│ Status: \033[0;32m%-34s\033[0m │\n" "✓ CONNECTED"
+                    printf "│ %-43s │\n" "Method: $method"
+                    printf "│ %-43s │\n" "Response Time: ${response_time}ms"
+                    echo "└─────────────────────────────────────────────┘"
+                    ((success_count++))
+                    
+                    # Write to output file if requested
+                    if [[ -n "$QUICK_OUTPUT_FILE" ]]; then
+                        echo "✓ $test_host:$test_port - CONNECTED ($method, ${response_time}ms)" >> "$QUICK_OUTPUT_FILE"
+                    fi
+                else
+                    printf "│ Status: \033[0;31m%-34s\033[0m │\n" "✗ FAILED"
+                    printf "│ %-43s │\n" "Reason: Connection timeout or refused"
+                    printf "│ %-43s │\n" "Attempted Time: ${response_time}ms"
+                    echo "└─────────────────────────────────────────────┘"
+                    ((fail_count++))
+                    
+                    # Write to output file if requested
+                    if [[ -n "$QUICK_OUTPUT_FILE" ]]; then
+                        echo "✗ $test_host:$test_port - FAILED (${response_time}ms)" >> "$QUICK_OUTPUT_FILE"
+                    fi
+                fi
+                echo ""
+            done
+        done
+    fi
     
     # Summary for multiple tests
-    if [[ $total_tests -gt 1 ]]; then
-        echo "════════════════════════════════════════════"
-        echo "Quick Test Summary"
-        echo "════════════════════════════════════════════"
+    if [[ $total_tests -gt 1 ]] || [[ -n "$QUICK_OUTPUT_FILE" ]]; then
+        summary="════════════════════════════════════════════
+Quick Test Summary
+════════════════════════════════════════════"
         if [[ $total_hosts -gt 1 ]]; then
-            echo "Hosts Tested: $total_hosts"
+            summary="$summary
+Hosts Tested: $total_hosts"
         fi
-        echo "Ports Tested: $total_ports"
-        echo "Total Tests:  $total_tests"
+        summary="$summary
+Ports Tested: $total_ports
+Total Tests:  $total_tests"
+        
+        echo "$summary"
         echo -e "Successful:   \033[0;32m$success_count\033[0m"
         echo -e "Failed:       \033[0;31m$fail_count\033[0m"
         echo "════════════════════════════════════════════"
+        
+        # Write summary to output file
+        if [[ -n "$QUICK_OUTPUT_FILE" ]]; then
+            echo "" >> "$QUICK_OUTPUT_FILE"
+            echo "$summary" >> "$QUICK_OUTPUT_FILE"
+            echo "Successful:   $success_count" >> "$QUICK_OUTPUT_FILE"
+            echo "Failed:       $fail_count" >> "$QUICK_OUTPUT_FILE"
+            echo "═══════════════════════════════════════════=" >> "$QUICK_OUTPUT_FILE"
+            echo "" >> "$QUICK_OUTPUT_FILE"
+            echo "Results saved to: $QUICK_OUTPUT_FILE"
+        fi
     fi
     
     # Exit with proper code

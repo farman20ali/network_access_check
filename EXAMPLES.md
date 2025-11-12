@@ -122,6 +122,26 @@ netcheck -q google.com 443
 netcheck -q 192.168.1.1 80
 ```
 
+### Save Quick Mode Results (NEW!)
+```bash
+# Save to file with -o flag
+netcheck -q 192.168.1.1-5 80 -o quick-results.txt
+netcheck -q server.com 80,443 -o webcheck.txt
+
+# Results include formatted output with summary
+cat quick-results.txt
+```
+
+### Quick Mode Parallel Processing (NEW!)
+```bash
+# Automatic parallel processing for >5 tests
+netcheck -q 192.168.1.1-20 80    # Runs in parallel (20 tests)
+netcheck -q 10.0.0.1-3 80        # Sequential (3 tests)
+
+# Control parallel jobs with -j flag
+netcheck -q 192.168.1.1-50 80 -j 20    # 20 parallel jobs
+```
+
 ### Multiple Ports
 ```bash
 # Check web ports
@@ -140,7 +160,7 @@ netcheck -q server.local 20-25
 netcheck -q localhost 8000-8100
 ```
 
-### IP Range with Quick Mode (NEW!)
+### IP Range with Quick Mode
 ```bash
 # Test multiple hosts at once
 netcheck -q 10.90.95.72-75 50000

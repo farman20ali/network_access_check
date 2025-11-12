@@ -277,14 +277,18 @@ Depends: bash (>= 4.0), telnet | netcat-openbsd | netcat-traditional
 Maintainer: Network Tools <admin@example.com>
 Description: Network connectivity checker with advanced features
  A powerful bash-based network connectivity testing tool that supports:
+  - ICMP ping testing with statistics and URL support
+  - DNS lookup with multiple fallback methods (accepts URLs)
   - Parallel connection testing (up to 256 concurrent jobs)
+  - Quick mode parallel processing for wide IP ranges
+  - Output file support for quick mode results (-o flag)
   - IP range support (192.168.1.1-50, 10.0.0.0/24)
   - Port ranges (8000-8100) and multiple ports (80,443,3306)
   - CSV file input for bulk testing
   - Multiple output formats (text, JSON, CSV, XML)
-  - Quick test mode for one-off checks
+  - Comprehensive input validation with helpful warnings
   - Real-time progress tracking
-  - Combined reports for failed connections
+  - Combined reports with dated filenames
  .
  Perfect for system administrators, DevOps engineers, and network diagnostics.
 Homepage: https://github.com/yourusername/netcheck
