@@ -4,19 +4,35 @@ A powerful, feature-rich command-line tool for testing network connectivity to m
 
 ## Features
 
+### Core Testing Features
 - ✅ **ICMP Ping Testing** - Test connectivity with ping (accepts URLs and IPs)
 - ✅ **DNS Lookup** - Resolve hostnames to IPs with multiple fallback methods (accepts URLs)
+- ✅ **TCP Port Testing** - Check if ports are open and responsive
+- ✅ **HTTP Status Checking** - Get HTTP/HTTPS response codes and performance metrics
+- ✅ **SSL Certificate Validation** - Check certificate expiry and validity
+
+### Network Diagnostics (v1.2.0)
+- 🆕 **Show Network Interfaces** - Display all network interfaces with IPs (--my-ip)
+- 🆕 **Retry Logic** - Automatically retry failed connections with configurable count and delay
+- 🆕 **HTTP Status Codes** - Check website status with response time and size (-s/--status)
+- 🆕 **SSL Certificate Check** - Validate SSL/TLS certificates with expiry warnings (--cert)
+
+### Performance & Automation
 - ✅ **Parallel Processing** - Check multiple hosts simultaneously (up to 256 jobs)
 - ✅ **Quick Mode Parallel Processing** - Automatic parallel execution for wide IP ranges (>5 tests)
 - ✅ **Quick Mode Output File** - Save quick mode results with -o/--output flag
+- ✅ **Response Time Measurement** - See connection latency in milliseconds
+
+### Input & Output
 - ✅ **Multiple Output Formats** - Text, JSON, CSV, XML
 - ✅ **Quick Test Mode** - Test single host without creating files
 - ✅ **IP Range Support** - Check IP ranges (192.168.1.1-50) and CIDR (10.0.0.0/24)
 - ✅ **Port Ranges** - Check port ranges (8000-8100) or multiple ports (80,443,8080)
 - ✅ **CSV File Support** - Read from CSV files (host,port format)
-- ✅ **Progress Bar** - Real-time progress tracking
-- ✅ **Response Time Measurement** - See connection latency in milliseconds
 - ✅ **Dated Result Files** - Automatic timestamped output files
+
+### Quality & Usability
+- ✅ **Progress Bar** - Real-time progress tracking
 - ✅ **Version Information** - Check tool version with -v flag
 - ✅ **Input Validation** - Comprehensive validation with helpful warnings for malformed input
 - ✅ **Automatic Dependency Installation** - Installs telnet and netcat if missing
@@ -39,7 +55,7 @@ sudo snap connect netcheck:network-observe
 
 **Benefits:** Auto-updates, universal Linux support, sandboxed security
 
-> **Note:** The `network-observe` connection is required for ICMP ping tests. Without it, the `-p/--ping` flag will fail with a permission error. All other features (TCP port tests, DNS lookup) work without this connection.
+> **Note:** The `network-observe` connection is required for ICMP ping tests. Without it, the `-p/--ping` flag will fail with a permission error. All other features (TCP port tests, DNS lookup, HTTP status, SSL cert checks) work without this connection.
 
 ### Option 2: DEB Package (Ubuntu/Debian)
 
@@ -48,7 +64,7 @@ sudo snap connect netcheck:network-observe
 ./build-deb.sh
 
 # Install
-sudo dpkg -i netcheck_1.0.0.deb
+sudo dpkg -i netcheck_1.2.0.deb
 ```
 
 ### Option 3: Manual System-wide Installation
@@ -122,6 +138,123 @@ netcheck -p google.com
 # NEW: Also accepts URLs (strips scheme/path automatically)
 netcheck -p https://github.com
 netcheck -p http://api.example.com
+```
+
+### Network Interface Information (v1.2.0)
+
+```bash
+# Show active network interfaces only (default)
+netcheck --my-ip
+netcheck -ip
+
+# Show all interfaces including inactive ones
+netcheck --my-ip --all
+```
+
+Output:
+```
+Network Interface Information
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📡 Active Network Interfaces (UP only):
+   Use '--my-ip --all' to show all interfaces
+
+Interface: enp1s0
+  IPv4: 10.90.19.195
+  Status: ✅ UP
+
+Interface: wlp0s20f3
+  IPv4: 192.168.0.137
+  Status: ✅ UP
+
+🌐 Default Gateway: 192.168.0.1
+   Via Interface: wlp0s20f3
+
+🌍 Public IP Address:
+  154.91.162.123
+```
+
+### HTTP Status Checking (v1.2.0)
+
+```bash
+# Check HTTP/HTTPS status codes
+netcheck -s https://google.com
+netcheck -s http://api.example.com
+
+# Get detailed headers with verbose mode
+netcheck -s https://github.com -V
+```
+
+Output:
+```
+HTTP Status Check for: https://google.com
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Sending HTTP request...
+
+┌─────────────────────────────────────────────┐
+│ URL: https://google.com                     │
+├─────────────────────────────────────────────┤
+│ Status: ✅ SUCCESS                          │
+│ Code: 200 OK                                │
+│ Response Time: 145ms                        │
+│ Content Size: 15.2 KB                       │
+└─────────────────────────────────────────────┘
+```
+
+### SSL Certificate Validation (v1.2.0)
+
+```bash
+# Check SSL/TLS certificate
+netcheck --cert https://google.com
+netcheck --cert github.com:443
+
+# Verbose mode shows SANs (Subject Alternative Names)
+netcheck --cert google.com -V
+```
+
+Output:
+```
+SSL/TLS Certificate Check for: google.com:443
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Connecting to google.com:443...
+
+┌─────────────────────────────────────────────┐
+│ Host: google.com:443                        │
+├─────────────────────────────────────────────┤
+│ Status: ✅ VALID                            │
+├─────────────────────────────────────────────┤
+│ Certificate Details:                        │
+├─────────────────────────────────────────────┤
+│ Subject: CN = *.google.com                  │
+│ Issuer: C = US, O = Google Trust Servi...  │
+├─────────────────────────────────────────────┤
+│ Valid From: Oct 15 08:15:42 2024 GMT       │
+│ Valid Until: Jan  7 08:15:41 2025 GMT      │
+│ Days Until Expiry: 62                       │
+└─────────────────────────────────────────────┘
+```
+
+### Retry Failed Connections (v1.2.0)
+
+```bash
+# Retry failed connections 3 times (works with all modes)
+netcheck --retry 3 hosts.txt
+
+# Custom retry delay (default: 1 second)
+netcheck --retry 3 --retry-delay 2 hosts.txt
+
+# Works in quick mode too
+netcheck -q 192.168.1.1 80 --retry 5 --retry-delay 1
+```
+
+### Version Information
+
+```bash
+# Check netcheck version
+netcheck -v
+netcheck --version
 ```
 
 Output:
@@ -234,8 +367,16 @@ OPTIONS:
     -f, --format <format>       Output format: text, json, csv, xml (default: text)
     -c, --combined              Create combined report with all results
     -q, --quick <host> <port>   Quick test mode (no files created)
+    -o, --output <file>         Save quick mode results to file
     -d, --dns <hostname>        Resolve DNS and show IP address (accepts URLs)
     -p, --ping <host>           Ping host using ICMP (accepts URLs/IPs)
+    -s, --status <url>          Check HTTP/HTTPS status code and response time
+    --cert <host>               Check SSL/TLS certificate validity and expiration
+    --my-ip, -ip                Show all network interfaces and IP addresses (UP only)
+    --my-ip --all               Show all interfaces including inactive ones
+    --retry <number>            Retry failed connections N times (default: 1, no retry)
+    --retry-delay <seconds>     Delay between retries in seconds (default: 1)
+    --csv                       Input file is in CSV format (host,port)
     -v, --version               Show version information
     -h, --help                  Show help message
 ```

@@ -27,8 +27,8 @@ if [ ! -f "snap/snapcraft.yaml" ]; then
     echo "Creating snapcraft.yaml..."
     cat << 'EOF' > snap/snapcraft.yaml
 name: netcheck
-version: '1.1.0'
-summary: Network connectivity checker with DNS, ping, and port testing
+version: '1.2.0'
+summary: Network connectivity checker with DNS, ping, HTTP, and SSL validation
 title: NetCheck - Network Connectivity Tester
 icon: snap/gui/icon.png
 license: GPL-3.0
@@ -39,8 +39,20 @@ contact: https://github.com/farman20ali/network_access_check/issues
 description: |
   A powerful bash-based network connectivity testing tool that supports:
   
+  Core Testing Features:
   - ICMP ping testing with statistics and URL support
   - DNS lookup with multiple fallback methods (accepts URLs)
+  - TCP port connectivity testing with parallel processing
+  - HTTP/HTTPS status code checking with performance metrics
+  - SSL/TLS certificate validation with expiry warnings
+  
+  Network Diagnostics (v1.2.0):
+  - Show network interfaces with IP addresses (--my-ip)
+  - Retry failed connections with configurable count and delay
+  - HTTP status codes with response time and content size
+  - SSL certificate expiry check with advance warnings
+  
+  Advanced Features:
   - Parallel TCP connection testing (up to 256 concurrent jobs)
   - Quick mode parallel processing for wide IP ranges
   - Output file support for quick mode results (-o flag)
@@ -59,14 +71,17 @@ description: |
   - Network diagnostics and troubleshooting
   - DNS resolution verification
   - ICMP connectivity testing
+  - HTTP/HTTPS status monitoring
+  - SSL certificate expiry tracking
   - Security auditing and port scanning
   - Load balancer health checks
   
   IMPORTANT: For ICMP ping functionality (-p flag), run after installation:
     sudo snap connect netcheck:network-observe
   
-  Without this connection, TCP port tests and DNS lookup work normally,
-  but ping tests will fail with permission errors.
+  Without this connection, TCP port tests, DNS lookup, HTTP status checks,
+  and SSL certificate validation work normally, but ping tests will fail
+  with permission errors.
 
 grade: stable
 confinement: strict
@@ -110,6 +125,10 @@ parts:
       - sed
       - dnsutils
       - iputils-ping
+      - curl
+      - openssl
+      - bc
+      - iproute2
 EOF
     echo "✅ snapcraft.yaml created"
 fi

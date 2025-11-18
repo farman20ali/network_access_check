@@ -6,7 +6,7 @@
 # Input format: Each line should contain IP/hostname and port separated by space
 # Example: 192.168.1.1 80
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 set -u
 
@@ -20,6 +20,9 @@ COMBINED_REPORT=0
 QUICK_TEST=0
 CSV_INPUT=0
 QUICK_OUTPUT_FILE=""
+RETRY_COUNT=1
+RETRY_DELAY=1
+SHOW_ALL_INTERFACES=0
 
 # Show help
 show_help() {
@@ -44,6 +47,12 @@ OPTIONS:
     -o, --output <file>         Save quick mode results to file
     -d, --dns <host>            Resolve DNS and show IP address (accepts URLs)
     -p, --ping <host>           Ping host using ICMP (accepts URLs/IPs)
+    -s, --status <url>          Check HTTP/HTTPS status code and response time
+    --cert <host>               Check SSL/TLS certificate validity and expiration
+    --my-ip, -ip                Show all network interfaces and IP addresses (UP only)
+    --my-ip --all               Show all interfaces including inactive ones
+    --retry <number>            Retry failed connections N times (default: 1, no retry)
+    --retry-delay <seconds>     Delay between retries in seconds (default: 1)
     --csv                       Input file is in CSV format (host,port)
     -h, --help                  Show this help message
     -v, --version               Show version information
@@ -68,6 +77,13 @@ EXAMPLES:
     $cmd_name -d https://api.example.com           # DNS from URL (strips scheme/path)
     $cmd_name -p 8.8.8.8                           # Ping Google DNS
     $cmd_name -p https://github.com                # Ping from URL
+    $cmd_name -s https://google.com                # Check HTTP status
+    $cmd_name -s api.example.com -V                # HTTP status with headers
+    $cmd_name --cert https://google.com            # Check SSL certificate
+    $cmd_name --cert github.com:443 -V             # Certificate with SANs
+    $cmd_name --my-ip                              # Show all network interfaces and IPs
+    $cmd_name --my-ip --all                        # Show all interfaces (including down)
+    $cmd_name --retry 3 --retry-delay 2 hosts.txt  # Retry failed connections 3 times with 2s delay
     $cmd_name -v                                   # Show version
     $cmd_name -q localhost 8000-8100               # Quick test port range
     echo "192.168.1.1-50 80" | $cmd_name          # Check IP range
@@ -123,6 +139,30 @@ parse_args() {
             --csv)
                 CSV_INPUT=1
                 shift
+                ;;
+            --retry)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: --retry requires <number> argument" >&2
+                    exit 1
+                fi
+                RETRY_COUNT="$2"
+                if ! [[ "$RETRY_COUNT" =~ ^[0-9]+$ ]] || [[ "$RETRY_COUNT" -lt 1 ]]; then
+                    echo "Error: --retry must be a positive integer" >&2
+                    exit 1
+                fi
+                shift 2
+                ;;
+            --retry-delay)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: --retry-delay requires <seconds> argument" >&2
+                    exit 1
+                fi
+                RETRY_DELAY="$2"
+                if ! [[ "$RETRY_DELAY" =~ ^[0-9]+$ ]] || [[ "$RETRY_DELAY" -lt 0 ]]; then
+                    echo "Error: --retry-delay must be a non-negative integer" >&2
+                    exit 1
+                fi
+                shift 2
                 ;;
             -o|--output)
                 if [[ $# -lt 2 ]]; then
@@ -224,6 +264,483 @@ parse_args() {
                 fi
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 exit 0
+                ;;
+            --my-ip|-ip)
+                # Check if --all-interfaces flag is next
+                if [[ $# -gt 1 ]] && [[ "$2" == "--all" ]]; then
+                    SHOW_ALL_INTERFACES=1
+                    shift
+                fi
+                
+                echo "Network Interface Information"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                
+                if [[ $SHOW_ALL_INTERFACES -eq 0 ]]; then
+                    echo "📡 Active Network Interfaces (UP only):"
+                    echo "   Use '--my-ip --all' to show all interfaces"
+                else
+                    echo "📡 All Network Interfaces:"
+                fi
+                echo ""
+                
+                # Try using ip command (modern Linux)
+                if command -v ip &> /dev/null; then
+                    # Collect interfaces first
+                    declare -A up_interfaces
+                    declare -A down_interfaces
+                    
+                    # Get all active interfaces with IPs
+                    while IFS= read -r line; do
+                        if [[ $line =~ ^[0-9]+:[[:space:]]*([^:]+): ]]; then
+                            interface="${BASH_REMATCH[1]}"
+                            # Skip loopback and virtual ethernet pairs
+                            if [[ "$interface" != "lo" ]] && [[ ! "$interface" =~ ^veth ]]; then
+                                # Get interface state
+                                state=$(ip link show "$interface" 2>/dev/null | grep -oP '(?<=state )\w+')
+                                
+                                # Get IPv4 addresses
+                                ipv4=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+                                
+                                # Get IPv6 addresses (optional)
+                                ipv6=$(ip -6 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet6\s)[0-9a-f:]+' | grep -v "^fe80")
+                                
+                                # Store interface data
+                                if [[ "$state" == "UP" ]]; then
+                                    up_interfaces["$interface"]="$ipv4|$ipv6|$state"
+                                else
+                                    down_interfaces["$interface"]="$ipv4|$ipv6|$state"
+                                fi
+                            fi
+                        fi
+                    done < <(ip link show 2>/dev/null)
+                    
+                    # Display UP interfaces first (sorted)
+                    if [[ ${#up_interfaces[@]} -gt 0 ]]; then
+                        for interface in $(printf '%s\n' "${!up_interfaces[@]}" | sort); do
+                            IFS='|' read -r ipv4 ipv6 state <<< "${up_interfaces[$interface]}"
+                            
+                            echo "Interface: $interface"
+                            if [[ -n "$ipv4" ]]; then
+                                echo "  IPv4: $ipv4"
+                            fi
+                            if [[ -n "$ipv6" ]]; then
+                                echo "  IPv6: $ipv6"
+                            fi
+                            echo "  Status: ✅ UP"
+                            echo ""
+                        done
+                    fi
+                    
+                    # Display DOWN interfaces only if --all flag is set
+                    if [[ $SHOW_ALL_INTERFACES -eq 1 ]] && [[ ${#down_interfaces[@]} -gt 0 ]]; then
+                        echo "Inactive Interfaces:"
+                        echo ""
+                        for interface in $(printf '%s\n' "${!down_interfaces[@]}" | sort); do
+                            IFS='|' read -r ipv4 ipv6 state <<< "${down_interfaces[$interface]}"
+                            
+                            echo "Interface: $interface"
+                            if [[ -n "$ipv4" ]]; then
+                                echo "  IPv4: $ipv4"
+                            fi
+                            if [[ -n "$ipv6" ]]; then
+                                echo "  IPv6: $ipv6"
+                            fi
+                            if [[ -n "$state" ]]; then
+                                echo "  Status: ⚠️  $state"
+                            else
+                                echo "  Status: ⚠️  DOWN"
+                            fi
+                            echo ""
+                        done
+                    fi
+                    
+                # Fallback to ifconfig (older systems)
+                elif command -v ifconfig &> /dev/null; then
+                    echo "📡 Network Interfaces:"
+                    echo ""
+                    
+                    ifconfig -a 2>/dev/null | grep -A 1 "^[a-z]" | while IFS= read -r line; do
+                        if [[ $line =~ ^([a-z0-9]+): ]]; then
+                            interface="${BASH_REMATCH[1]}"
+                            if [[ "$interface" != "lo" ]]; then
+                                echo "Interface: $interface"
+                            fi
+                        elif [[ $line =~ inet[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+                            echo "  IPv4: ${BASH_REMATCH[1]}"
+                            echo ""
+                        fi
+                    done
+                    
+                # Last resort: hostname -I
+                elif command -v hostname &> /dev/null; then
+                    echo "📡 IP Addresses:"
+                    echo ""
+                    hostname -I 2>/dev/null | tr ' ' '\n' | while read -r ip; do
+                        if [[ -n "$ip" ]]; then
+                            echo "  $ip"
+                        fi
+                    done
+                    echo ""
+                else
+                    echo "❌ Error: No network tools available (ip, ifconfig, hostname)" >&2
+                    exit 1
+                fi
+                
+                # Show default gateway
+                if command -v ip &> /dev/null; then
+                    gateway=$(ip route show default 2>/dev/null | grep -oP '(?<=via )\S+' | head -1)
+                    if [[ -n "$gateway" ]]; then
+                        echo "🌐 Default Gateway: $gateway"
+                        gateway_dev=$(ip route show default 2>/dev/null | grep -oP '(?<=dev )\S+' | head -1)
+                        if [[ -n "$gateway_dev" ]]; then
+                            echo "   Via Interface: $gateway_dev"
+                        fi
+                        echo ""
+                    fi
+                fi
+                
+                # Show public IP (if internet available)
+                echo "🌍 Public IP Address:"
+                public_ip=""
+                
+                # Try multiple services
+                if command -v curl &> /dev/null; then
+                    public_ip=$(timeout 3 curl -s https://ifconfig.me 2>/dev/null || \
+                               timeout 3 curl -s https://api.ipify.org 2>/dev/null || \
+                               timeout 3 curl -s https://icanhazip.com 2>/dev/null)
+                elif command -v wget &> /dev/null; then
+                    public_ip=$(timeout 3 wget -qO- https://ifconfig.me 2>/dev/null || \
+                               timeout 3 wget -qO- https://api.ipify.org 2>/dev/null)
+                fi
+                
+                if [[ -n "$public_ip" ]]; then
+                    echo "  $public_ip"
+                else
+                    echo "  Unable to determine (no internet or curl/wget not available)"
+                fi
+                
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                exit 0
+                ;;
+            -s|--status)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: -s/--status requires <URL> argument" >&2
+                    exit 1
+                fi
+                target_url="$2"
+                
+                # Ensure URL has http:// or https://
+                if [[ ! "$target_url" =~ ^https?:// ]]; then
+                    target_url="http://$target_url"
+                fi
+                
+                echo "HTTP Status Check for: $target_url"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                
+                # Check if curl is available
+                if ! command -v curl &> /dev/null; then
+                    echo "❌ Error: 'curl' command not found" >&2
+                    echo "   Install curl: sudo apt install curl" >&2
+                    exit 1
+                fi
+                
+                # Perform HTTP request with timing
+                echo "Sending HTTP request..."
+                echo ""
+                
+                # Get detailed response with timing
+                response=$(curl -s -o /dev/null -w "%{http_code}|%{time_total}|%{size_download}|%{redirect_url}" \
+                          --max-time "$TIMEOUT" \
+                          -L "$target_url" 2>&1)
+                curl_exit=$?
+                
+                if [[ $curl_exit -ne 0 ]]; then
+                    echo "❌ Request Failed"
+                    echo ""
+                    case $curl_exit in
+                        6)  echo "Error: Could not resolve host" ;;
+                        7)  echo "Error: Failed to connect to host" ;;
+                        28) echo "Error: Connection timeout after ${TIMEOUT}s" ;;
+                        35) echo "Error: SSL connection error" ;;
+                        51) echo "Error: SSL certificate problem" ;;
+                        52) echo "Error: Empty reply from server" ;;
+                        56) echo "Error: Failure receiving network data" ;;
+                        *)  echo "Error: curl exit code $curl_exit" ;;
+                    esac
+                    echo ""
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    exit 1
+                fi
+                
+                # Parse response
+                IFS='|' read -r status_code time_total size_download redirect_url <<< "$response"
+                
+                # Convert time to milliseconds
+                response_time=$(echo "$time_total * 1000" | bc 2>/dev/null || echo "0")
+                response_time=${response_time%.*}  # Remove decimals
+                
+                # Convert size to human readable
+                if [[ $size_download -gt 1048576 ]]; then
+                    size_human=$(echo "scale=2; $size_download / 1048576" | bc 2>/dev/null || echo "0")
+                    size_human="${size_human} MB"
+                elif [[ $size_download -gt 1024 ]]; then
+                    size_human=$(echo "scale=2; $size_download / 1024" | bc 2>/dev/null || echo "0")
+                    size_human="${size_human} KB"
+                else
+                    size_human="${size_download} bytes"
+                fi
+                
+                # Determine status category
+                status_icon="✓"
+                status_text="SUCCESS"
+                status_desc=""
+                
+                if [[ $status_code -ge 200 ]] && [[ $status_code -lt 300 ]]; then
+                    status_icon="✅"
+                    status_text="SUCCESS"
+                    case $status_code in
+                        200) status_desc="OK" ;;
+                        201) status_desc="Created" ;;
+                        202) status_desc="Accepted" ;;
+                        204) status_desc="No Content" ;;
+                        *)   status_desc="Success" ;;
+                    esac
+                elif [[ $status_code -ge 300 ]] && [[ $status_code -lt 400 ]]; then
+                    status_icon="↪"
+                    status_text="REDIRECT"
+                    case $status_code in
+                        301) status_desc="Moved Permanently" ;;
+                        302) status_desc="Found (Temporary Redirect)" ;;
+                        303) status_desc="See Other" ;;
+                        304) status_desc="Not Modified" ;;
+                        307) status_desc="Temporary Redirect" ;;
+                        308) status_desc="Permanent Redirect" ;;
+                        *)   status_desc="Redirect" ;;
+                    esac
+                elif [[ $status_code -ge 400 ]] && [[ $status_code -lt 500 ]]; then
+                    status_icon="❌"
+                    status_text="CLIENT ERROR"
+                    case $status_code in
+                        400) status_desc="Bad Request" ;;
+                        401) status_desc="Unauthorized" ;;
+                        403) status_desc="Forbidden" ;;
+                        404) status_desc="Not Found" ;;
+                        405) status_desc="Method Not Allowed" ;;
+                        408) status_desc="Request Timeout" ;;
+                        429) status_desc="Too Many Requests" ;;
+                        *)   status_desc="Client Error" ;;
+                    esac
+                elif [[ $status_code -ge 500 ]]; then
+                    status_icon="⚠️"
+                    status_text="SERVER ERROR"
+                    case $status_code in
+                        500) status_desc="Internal Server Error" ;;
+                        501) status_desc="Not Implemented" ;;
+                        502) status_desc="Bad Gateway" ;;
+                        503) status_desc="Service Unavailable" ;;
+                        504) status_desc="Gateway Timeout" ;;
+                        *)   status_desc="Server Error" ;;
+                    esac
+                else
+                    status_desc="Unknown Status"
+                fi
+                
+                # Display results
+                echo "┌─────────────────────────────────────────────┐"
+                printf "│ %-43s │\n" "URL: $target_url"
+                echo "├─────────────────────────────────────────────┤"
+                printf "│ Status: $status_icon %-35s │\n" "$status_text"
+                printf "│ Code: %-38s │\n" "$status_code $status_desc"
+                printf "│ Response Time: %-28s │\n" "${response_time}ms"
+                printf "│ Content Size: %-29s │\n" "$size_human"
+                
+                if [[ -n "$redirect_url" ]]; then
+                    printf "│ Redirected To: %-27s │\n" "$redirect_url"
+                fi
+                
+                echo "└─────────────────────────────────────────────┘"
+                echo ""
+                
+                # Get additional headers if verbose
+                if [[ $VERBOSE -eq 1 ]]; then
+                    echo "Response Headers:"
+                    echo "─────────────────────────────────────────────"
+                    curl -s -I --max-time "$TIMEOUT" "$target_url" 2>/dev/null | grep -v "^HTTP/"
+                    echo "─────────────────────────────────────────────"
+                    echo ""
+                fi
+                
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                # Exit with appropriate code
+                if [[ $status_code -ge 200 ]] && [[ $status_code -lt 400 ]]; then
+                    exit 0
+                else
+                    exit 1
+                fi
+                ;;
+            --cert)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: --cert requires <hostname> or <URL> argument" >&2
+                    exit 1
+                fi
+                target="$2"
+                
+                # Normalize URL - extract hostname and port
+                target="${target#*://}"  # Remove protocol
+                target_host="${target%%/*}"  # Remove path
+                target_port="443"  # Default HTTPS port
+                
+                # Check if port is specified
+                if [[ "$target_host" =~ : ]]; then
+                    target_port="${target_host##*:}"
+                    target_host="${target_host%:*}"
+                fi
+                
+                echo "SSL/TLS Certificate Check for: $target_host:$target_port"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                
+                # Check if openssl is available
+                if ! command -v openssl &> /dev/null; then
+                    echo "❌ Error: 'openssl' command not found" >&2
+                    echo "   Install openssl: sudo apt install openssl" >&2
+                    exit 1
+                fi
+                
+                echo "Connecting to $target_host:$target_port..."
+                echo ""
+                
+                # Get certificate information
+                cert_info=$(echo | timeout "$TIMEOUT" openssl s_client -servername "$target_host" \
+                           -connect "$target_host:$target_port" 2>/dev/null | \
+                           openssl x509 -noout -text 2>/dev/null)
+                
+                if [[ -z "$cert_info" ]]; then
+                    echo "❌ Failed to retrieve SSL certificate"
+                    echo ""
+                    echo "Possible reasons:"
+                    echo "  - Host is not responding"
+                    echo "  - Port $target_port is not open"
+                    echo "  - Not an SSL/TLS service"
+                    echo "  - Connection timeout"
+                    echo ""
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    exit 1
+                fi
+                
+                # Extract certificate details
+                subject=$(echo "$cert_info" | grep "Subject:" | sed 's/.*Subject: //')
+                issuer=$(echo "$cert_info" | grep "Issuer:" | sed 's/.*Issuer: //')
+                not_before=$(echo "$cert_info" | grep "Not Before" | sed 's/.*Not Before: //')
+                not_after=$(echo "$cert_info" | grep "Not After" | sed 's/.*Not After : //')
+                
+                # Get dates in comparable format
+                expiry_date=$(echo | timeout "$TIMEOUT" openssl s_client -servername "$target_host" \
+                             -connect "$target_host:$target_port" 2>/dev/null | \
+                             openssl x_509 -noout -enddate 2>/dev/null | cut -d= -f2)
+                
+                if [[ -z "$expiry_date" ]]; then
+                    expiry_date="$not_after"
+                fi
+                
+                # Calculate days until expiry
+                if command -v date &> /dev/null; then
+                    expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null || date -j -f "%b %d %H:%M:%S %Y %Z" "$expiry_date" +%s 2>/dev/null)
+                    current_epoch=$(date +%s)
+                    
+                    if [[ -n "$expiry_epoch" ]] && [[ -n "$current_epoch" ]]; then
+                        days_until_expiry=$(( (expiry_epoch - current_epoch) / 86400 ))
+                    else
+                        days_until_expiry="Unknown"
+                    fi
+                else
+                    days_until_expiry="Unknown"
+                fi
+                
+                # Extract SANs (Subject Alternative Names)
+                sans=$(echo "$cert_info" | grep -A1 "Subject Alternative Name" | tail -1 | sed 's/DNS://g' | sed 's/,/\n                  /g')
+                
+                # Determine status
+                status_icon="✅"
+                status_text="VALID"
+                warning=""
+                
+                if [[ "$days_until_expiry" != "Unknown" ]]; then
+                    if [[ $days_until_expiry -lt 0 ]]; then
+                        status_icon="❌"
+                        status_text="EXPIRED"
+                        warning="⚠️  Certificate has EXPIRED!"
+                    elif [[ $days_until_expiry -lt 7 ]]; then
+                        status_icon="⚠️"
+                        status_text="EXPIRING SOON"
+                        warning="⚠️  Certificate expires in less than 7 days!"
+                    elif [[ $days_until_expiry -lt 30 ]]; then
+                        status_icon="⚠️"
+                        status_text="EXPIRING SOON"
+                        warning="⚠️  Certificate expires in less than 30 days!"
+                    fi
+                fi
+                
+                # Display results
+                echo "┌─────────────────────────────────────────────┐"
+                printf "│ Host: %-38s │\n" "$target_host:$target_port"
+                echo "├─────────────────────────────────────────────┤"
+                printf "│ Status: $status_icon %-35s │\n" "$status_text"
+                echo "├─────────────────────────────────────────────┤"
+                printf "│ %-43s │\n" "Certificate Details:"
+                echo "├─────────────────────────────────────────────┤"
+                
+                # Print subject (trim if too long)
+                if [[ ${#subject} -gt 40 ]]; then
+                    printf "│ Subject: %-34s │\n" "${subject:0:37}..."
+                else
+                    printf "│ Subject: %-34s │\n" "$subject"
+                fi
+                
+                # Print issuer (trim if too long)
+                if [[ ${#issuer} -gt 40 ]]; then
+                    printf "│ Issuer: %-35s │\n" "${issuer:0:37}..."
+                else
+                    printf "│ Issuer: %-35s │\n" "$issuer"
+                fi
+                
+                echo "├─────────────────────────────────────────────┤"
+                printf "│ Valid From: %-31s │\n" "${not_before:0:31}"
+                printf "│ Valid Until: %-30s │\n" "${not_after:0:30}"
+                
+                if [[ "$days_until_expiry" != "Unknown" ]]; then
+                    printf "│ Days Until Expiry: %-23s │\n" "$days_until_expiry"
+                fi
+                
+                echo "└─────────────────────────────────────────────┘"
+                
+                if [[ -n "$warning" ]]; then
+                    echo ""
+                    echo "$warning"
+                fi
+                
+                # Show SANs if verbose
+                if [[ $VERBOSE -eq 1 ]] && [[ -n "$sans" ]]; then
+                    echo ""
+                    echo "Subject Alternative Names (SANs):"
+                    echo "─────────────────────────────────────────────"
+                    echo "$sans"
+                    echo "─────────────────────────────────────────────"
+                fi
+                
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                # Exit with appropriate code
+                if [[ "$status_text" == "EXPIRED" ]]; then
+                    exit 1
+                else
+                    exit 0
+                fi
                 ;;
             -p|--ping)
                 if [[ $# -lt 2 ]]; then
@@ -567,39 +1084,59 @@ if [[ $QUICK_TEST -eq 1 ]]; then
         local temp_dir=$3
         local result_file="${temp_dir}/result_${test_host}_${test_port}.txt"
         
-        # Try telnet first
-        TELNET_EXIT_CODE=1
-        NC_EXIT_CODE=1
+        # Try telnet first with retry logic
+        local TELNET_EXIT_CODE=1
+        local NC_EXIT_CODE=1
+        local attempt=1
+        local success=0
+        local total_response_time=0
         
-        start_time=$(date +%s%N)
-        (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$test_host" "$test_port" > /dev/null 2>&1 < /dev/null
-        TELNET_EXIT_CODE=$?
-        end_time=$(date +%s%N)
-        
-        # If telnet fails, try netcat
-        if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
+        while [[ $attempt -le $RETRY_COUNT ]] && [[ $success -eq 0 ]]; do
             start_time=$(date +%s%N)
-            nc -w "$TIMEOUT" -z "$test_host" "$test_port" > /dev/null 2>&1
-            NC_EXIT_CODE=$?
+            (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$test_host" "$test_port" > /dev/null 2>&1 < /dev/null
+            TELNET_EXIT_CODE=$?
             end_time=$(date +%s%N)
-        fi
-        
-        # Calculate response time in milliseconds
-        response_time=$(( (end_time - start_time) / 1000000 ))
+            
+            # If telnet fails, try netcat
+            if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
+                start_time=$(date +%s%N)
+                nc -w "$TIMEOUT" -z "$test_host" "$test_port" > /dev/null 2>&1
+                NC_EXIT_CODE=$?
+                end_time=$(date +%s%N)
+            fi
+            
+            # Calculate response time in milliseconds
+            local response_time=$(( (end_time - start_time) / 1000000 ))
+            total_response_time=$response_time
+            
+            # Check if successful
+            if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
+                success=1
+            else
+                # If not the last attempt, wait before retry
+                if [[ $attempt -lt $RETRY_COUNT ]]; then
+                    sleep "$RETRY_DELAY"
+                fi
+            fi
+            
+            ((attempt++))
+        done
         
         # Write result to temp file
-        if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
+        if [[ $success -eq 1 ]]; then
             method="telnet"
             [[ $NC_EXIT_CODE -eq 0 ]] && method="netcat"
-            echo "SUCCESS|$test_host|$test_port|$method|$response_time" > "$result_file"
+            echo "SUCCESS|$test_host|$test_port|$method|$total_response_time" > "$result_file"
         else
-            echo "FAILED|$test_host|$test_port|timeout|$response_time" > "$result_file"
+            echo "FAILED|$test_host|$test_port|timeout|$total_response_time" > "$result_file"
         fi
     }
     
     # Export function and variables for parallel execution
     export -f test_single_quick
     export TIMEOUT
+    export RETRY_COUNT
+    export RETRY_DELAY
     
     # Decide whether to use parallel processing
     # Use parallel for more than 5 tests
@@ -963,22 +1500,44 @@ check_host() {
     # Initialize exit codes
     local TELNET_EXIT_CODE=1
     local NC_EXIT_CODE=1
+    local attempt=1
+    local success=0
     
     [[ $VERBOSE -eq 1 ]] && echo "Checking: $REMOTEHOST:$REMOTEPORT" >&2
     
-    # Try telnet first
-    (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$REMOTEHOST" "$REMOTEPORT" > /dev/null 2>&1 < /dev/null
-    TELNET_EXIT_CODE=$?
-    
-    # If telnet fails, try netcat
-    if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
-        nc -w "$TIMEOUT" -z "$REMOTEHOST" "$REMOTEPORT" > /dev/null 2>&1
-        NC_EXIT_CODE=$?
-    fi
+    # Retry loop
+    while [[ $attempt -le $RETRY_COUNT ]] && [[ $success -eq 0 ]]; do
+        if [[ $VERBOSE -eq 1 ]] && [[ $RETRY_COUNT -gt 1 ]]; then
+            echo "  Attempt $attempt/$RETRY_COUNT..." >&2
+        fi
+        
+        # Try telnet first
+        (echo '^]'; echo quit) | timeout --signal=9 "$TIMEOUT" telnet "$REMOTEHOST" "$REMOTEPORT" > /dev/null 2>&1 < /dev/null
+        TELNET_EXIT_CODE=$?
+        
+        # If telnet fails, try netcat
+        if [[ $TELNET_EXIT_CODE -ne 0 ]]; then
+            nc -w "$TIMEOUT" -z "$REMOTEHOST" "$REMOTEPORT" > /dev/null 2>&1
+            NC_EXIT_CODE=$?
+        fi
+        
+        # Check if successful
+        if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
+            success=1
+        else
+            # If not the last attempt, wait before retry
+            if [[ $attempt -lt $RETRY_COUNT ]]; then
+                [[ $VERBOSE -eq 1 ]] && echo "  Failed, retrying in ${RETRY_DELAY}s..." >&2
+                sleep "$RETRY_DELAY"
+            fi
+        fi
+        
+        ((attempt++))
+    done
     
     # Save results
     local check_time=$(date +"%Y-%m-%d %H:%M:%S")
-    if [[ $TELNET_EXIT_CODE -eq 0 ]] || [[ $NC_EXIT_CODE -eq 0 ]]; then
+    if [[ $success -eq 1 ]]; then
         local method="telnet"
         [[ $NC_EXIT_CODE -eq 0 ]] && method="netcat"
         echo "SUCCESS|$REMOTEHOST|$REMOTEPORT|$method|$check_time" > "$result_data"

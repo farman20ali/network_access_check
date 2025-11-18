@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 PACKAGE_NAME="netcheck"
 BUILD_DIR="${PACKAGE_NAME}_${VERSION}"
 
@@ -229,7 +229,7 @@ _netcheck() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="-t -j -v -f -c -q -h --timeout --jobs --verbose --format --combined --quick --csv --help --version"
+    opts="-t -j -V -f -c -q -o -d -p -s -h -v --timeout --jobs --verbose --format --combined --quick --output --dns --ping --status --cert --my-ip --retry --retry-delay --csv --help --version --all"
     
     case "${prev}" in
         -f|--format)
@@ -242,6 +242,18 @@ _netcheck() {
             ;;
         -j|--jobs)
             COMPREPLY=( $(compgen -W "10 20 50 100 200" -- ${cur}) )
+            return 0
+            ;;
+        --retry)
+            COMPREPLY=( $(compgen -W "1 2 3 5 10" -- ${cur}) )
+            return 0
+            ;;
+        --retry-delay)
+            COMPREPLY=( $(compgen -W "1 2 3 5" -- ${cur}) )
+            return 0
+            ;;
+        -o|--output)
+            COMPREPLY=( $(compgen -f -- ${cur}) )
             return 0
             ;;
         --csv)
@@ -273,12 +285,16 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: all
-Depends: bash (>= 4.0), telnet | netcat-openbsd | netcat-traditional
+Depends: bash (>= 4.0), telnet | netcat-openbsd | netcat-traditional, curl, openssl, bc, iproute2 | net-tools
 Maintainer: Network Tools <admin@example.com>
 Description: Network connectivity checker with advanced features
  A powerful bash-based network connectivity testing tool that supports:
   - ICMP ping testing with statistics and URL support
   - DNS lookup with multiple fallback methods (accepts URLs)
+  - HTTP/HTTPS status checking with performance metrics
+  - SSL/TLS certificate validation with expiry warnings
+  - Network interface display with filtering (--my-ip)
+  - Retry logic with configurable count and delay
   - Parallel connection testing (up to 256 concurrent jobs)
   - Quick mode parallel processing for wide IP ranges
   - Output file support for quick mode results (-o flag)

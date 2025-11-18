@@ -7,7 +7,7 @@ You now have **3 ways** to distribute your `netcheck` tool:
 | Method | Command | Users Install With | Best For |
 |--------|---------|-------------------|----------|
 | **Manual** | `sudo ./install.sh` | Same | Development, local testing |
-| **DEB Package** | `./build-deb.sh` | `sudo dpkg -i netcheck_1.0.0.deb` | Debian/Ubuntu users |
+| **DEB Package** | `./build-deb.sh` | `sudo dpkg -i netcheck_1.2.0.deb` | Debian/Ubuntu users |
 | **Snap Package** | `./build-snap.sh` | `sudo snap install netcheck` | All Linux distributions |
 
 ---
@@ -55,13 +55,13 @@ A `.deb` file is the standard package format for Debian-based Linux (Ubuntu, Deb
 ### Build DEB Package
 ```bash
 ./build-deb.sh
-# Creates: netcheck_1.0.0.deb
+# Creates: netcheck_1.2.0.deb
 ```
 
 ### Test Locally
 ```bash
 # Install
-sudo dpkg -i netcheck_1.0.0.deb
+sudo dpkg -i netcheck_1.2.0.deb
 
 # Fix dependencies if needed
 sudo apt-get install -f
@@ -94,10 +94,10 @@ sudo apt install netcheck
 #### Option 2: GitHub Releases (Simple)
 ```bash
 # 1. Create GitHub release
-# 2. Upload netcheck_1.0.0.deb as asset
+# 2. Upload netcheck_1.2.0.deb as asset
 # 3. Users download and install:
-wget https://github.com/user/netcheck/releases/download/v1.0.0/netcheck_1.0.0.deb
-sudo dpkg -i netcheck_1.0.0.deb
+wget https://github.com/user/netcheck/releases/download/v1.2.0/netcheck_1.2.0.deb
+sudo dpkg -i netcheck_1.2.0.deb
 ```
 
 #### Option 3: Custom Repository (Advanced)

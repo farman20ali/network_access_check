@@ -47,11 +47,25 @@ mkdir -p snap
 # Create snapcraft.yaml
 cat << 'EOF' > snap/snapcraft.yaml
 name: netcheck
-version: '1.0.0'
-summary: Network connectivity checker with advanced features
+version: '1.2.0'
+summary: Network connectivity checker with DNS, ping, HTTP, and SSL validation
 description: |
   A powerful bash-based network connectivity testing tool that supports:
   
+  Core Testing Features:
+  - ICMP ping testing with statistics and URL support
+  - DNS lookup with multiple fallback methods (accepts URLs)
+  - TCP port connectivity testing with parallel processing
+  - HTTP/HTTPS status code checking with performance metrics
+  - SSL/TLS certificate validation with expiry warnings
+  
+  Network Diagnostics (v1.2.0):
+  - Show network interfaces with IP addresses (--my-ip)
+  - Retry failed connections with configurable count and delay
+  - HTTP status codes with response time and content size
+  - SSL certificate expiry check with advance warnings
+  
+  Advanced Features:
   - Parallel connection testing (up to 256 concurrent jobs)
   - IP range support (192.168.1.1-50)
   - CIDR notation (10.0.0.0/24)
@@ -66,6 +80,10 @@ description: |
   - System administrators monitoring infrastructure
   - DevOps engineers validating deployments
   - Network diagnostics and troubleshooting
+  - DNS resolution verification
+  - ICMP connectivity testing
+  - HTTP/HTTPS status monitoring
+  - SSL certificate expiry tracking
   - Security auditing and port scanning
   - Load balancer health checks
 
@@ -109,6 +127,12 @@ parts:
       - coreutils
       - grep
       - sed
+      - dnsutils
+      - iputils-ping
+      - curl
+      - openssl
+      - bc
+      - iproute2
 EOF
 ```
 
@@ -117,7 +141,7 @@ EOF
 #### Metadata Section:
 ```yaml
 name: netcheck                    # Package name (must be unique in Snap Store)
-version: '1.0.0'                  # Version string
+version: '1.2.0'                  # Version string
 summary: Short one-line description  # Max 78 characters
 description: |                    # Detailed multi-line description
   Longer description here...

@@ -10,7 +10,7 @@ netcheck --version
 
 Output:
 ```
-Network Connectivity Checker (netcheck) version 1.0.0
+Network Connectivity Checker (netcheck) version 1.2.0
 Copyright (c) 2025
 License: GNU GPL v3
 ```
@@ -453,6 +453,300 @@ xmllint --format result.txt
 
 ---
 
+## 13. Network Interface Information (v1.2.0)
+
+### Show Active Interfaces (Default)
+```bash
+netcheck --my-ip
+netcheck -ip
+```
+
+Output:
+```
+Network Interface Information
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📡 Active Network Interfaces (UP only):
+   Use '--my-ip --all' to show all interfaces
+
+Interface: enp1s0
+  IPv4: 10.90.19.195
+  Status: ✅ UP
+
+Interface: wlp0s20f3
+  IPv4: 192.168.0.137
+  Status: ✅ UP
+
+🌐 Default Gateway: 192.168.0.1
+   Via Interface: wlp0s20f3
+
+🌍 Public IP Address:
+  154.91.162.123
+```
+
+### Show All Interfaces (Including Inactive)
+```bash
+netcheck --my-ip --all
+```
+
+Output includes both active and inactive interfaces:
+```
+📡 All Network Interfaces:
+
+Interface: enp1s0
+  IPv4: 10.90.19.195
+  Status: ✅ UP
+
+Interface: wlp0s20f3
+  IPv4: 192.168.0.137
+  Status: ✅ UP
+
+Inactive Interfaces:
+
+Interface: docker0
+  IPv4: 172.17.0.1
+  Status: ⚠️  DOWN
+
+Interface: virbr0
+  IPv4: 192.168.122.1
+  Status: ⚠️  DOWN
+```
+
+---
+
+## 14. HTTP Status Checking (v1.2.0)
+
+### Basic HTTP Status Check
+```bash
+netcheck -s https://google.com
+netcheck -s http://example.com
+netcheck --status https://api.github.com
+```
+
+Output:
+```
+HTTP Status Check for: https://google.com
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Sending HTTP request...
+
+┌─────────────────────────────────────────────┐
+│ URL: https://google.com                     │
+├─────────────────────────────────────────────┤
+│ Status: ✅ SUCCESS                          │
+│ Code: 200 OK                                │
+│ Response Time: 145ms                        │
+│ Content Size: 15.2 KB                       │
+└─────────────────────────────────────────────┘
+```
+
+### Check API Endpoint
+```bash
+netcheck -s https://api.example.com/v1/health
+```
+
+Output (for 401 Unauthorized):
+```
+┌─────────────────────────────────────────────┐
+│ URL: https://api.example.com/v1/health      │
+├─────────────────────────────────────────────┤
+│ Status: ❌ CLIENT ERROR                     │
+│ Code: 401 Unauthorized                      │
+│ Response Time: 89ms                         │
+│ Content Size: 256 bytes                     │
+└─────────────────────────────────────────────┘
+```
+
+### Verbose Mode (Show Headers)
+```bash
+netcheck -s https://github.com -V
+```
+
+Shows additional response headers:
+```
+Response Headers:
+─────────────────────────────────────────────
+server: GitHub.com
+date: Mon, 18 Nov 2024 10:15:30 GMT
+content-type: text/html; charset=utf-8
+cache-control: max-age=0, private, must-revalidate
+set-cookie: _gh_sess=...
+─────────────────────────────────────────────
+```
+
+---
+
+## 15. SSL Certificate Validation (v1.2.0)
+
+### Check SSL Certificate
+```bash
+netcheck --cert google.com
+netcheck --cert https://github.com
+netcheck --cert example.com:443
+```
+
+Output:
+```
+SSL/TLS Certificate Check for: google.com:443
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Connecting to google.com:443...
+
+┌─────────────────────────────────────────────┐
+│ Host: google.com:443                        │
+├─────────────────────────────────────────────┤
+│ Status: ✅ VALID                            │
+├─────────────────────────────────────────────┤
+│ Certificate Details:                        │
+├─────────────────────────────────────────────┤
+│ Subject: CN = *.google.com                  │
+│ Issuer: C = US, O = Google Trust Servi...  │
+├─────────────────────────────────────────────┤
+│ Valid From: Oct 15 08:15:42 2024 GMT       │
+│ Valid Until: Jan  7 08:15:41 2025 GMT      │
+│ Days Until Expiry: 62                       │
+└─────────────────────────────────────────────┘
+```
+
+### Check Expiring Certificate
+If certificate expires soon, you'll see warnings:
+```
+┌─────────────────────────────────────────────┐
+│ Host: oldsite.com:443                       │
+├─────────────────────────────────────────────┤
+│ Status: ⚠️  EXPIRING SOON                   │
+├─────────────────────────────────────────────┤
+│ Days Until Expiry: 5                        │
+└─────────────────────────────────────────────┘
+
+⚠️  Certificate expires in less than 7 days!
+```
+
+### Verbose Mode (Show SANs)
+```bash
+netcheck --cert google.com -V
+```
+
+Shows Subject Alternative Names:
+```
+Subject Alternative Names (SANs):
+─────────────────────────────────────────────
+*.google.com
+*.android.com
+*.appengine.google.com
+*.cloud.google.com
+*.google-analytics.com
+google.com
+─────────────────────────────────────────────
+```
+
+---
+
+## 16. Retry Failed Connections (v1.2.0)
+
+### Basic Retry (3 Attempts)
+```bash
+netcheck --retry 3 hosts.txt
+```
+
+If a connection fails, it will retry 3 times before marking as failed.
+
+### Custom Retry Delay
+```bash
+netcheck --retry 5 --retry-delay 2 hosts.txt
+```
+
+Retries 5 times with 2 seconds delay between attempts.
+
+### Retry in Quick Mode
+```bash
+netcheck -q 192.168.1.1 80 --retry 3 --retry-delay 1
+```
+
+### Verbose Mode Shows Attempts
+```bash
+netcheck --retry 3 -V hosts.txt
+```
+
+Output:
+```
+Testing 192.168.1.1:80...
+  Attempt 1/3... Failed
+  Waiting 1 second...
+  Attempt 2/3... Failed
+  Waiting 1 second...
+  Attempt 3/3... Failed
+❌ FAILED after 3 attempts
+```
+
+---
+
+## 17. Combined Features (v1.2.0)
+
+### Full Network Health Check
+```bash
+# Check network interfaces
+netcheck --my-ip
+
+# Check internet connectivity
+netcheck -p 8.8.8.8
+
+# Check DNS resolution
+netcheck -d google.com
+
+# Check HTTP services
+netcheck -s https://api.example.com
+
+# Check SSL certificates
+netcheck --cert example.com
+```
+
+### Monitoring Script
+```bash
+#!/bin/bash
+# network-monitor.sh
+
+echo "=== Network Health Check ==="
+echo ""
+
+# Check interfaces
+echo "1. Network Interfaces:"
+netcheck --my-ip
+echo ""
+
+# Check internet connectivity
+echo "2. Internet Connectivity:"
+netcheck -p 8.8.8.8 && echo "✅ Internet OK" || echo "❌ No Internet"
+echo ""
+
+# Check critical services
+echo "3. Critical Services:"
+netcheck -q api.example.com 443 --retry 3
+netcheck -q db.example.com 5432 --retry 3
+echo ""
+
+# Check SSL certificates (warn if expiring)
+echo "4. SSL Certificate Status:"
+netcheck --cert api.example.com
+netcheck --cert www.example.com
+```
+
+### Bulk Testing with Retry
+```bash
+# Create hosts file with critical services
+cat > critical-services.txt << EOF
+api.example.com 443
+db.example.com 5432
+cache.example.com 6379
+queue.example.com 5672
+EOF
+
+# Test all with retry logic
+netcheck critical-services.txt --retry 3 --retry-delay 2 -j 20
+```
+
+---
+
 ## Summary
 
 **Version & Help:**
@@ -463,11 +757,20 @@ xmllint --format result.txt
 - `-d google.com` - Resolve DNS to IP
 - Shows IPv4, IPv6, aliases, reverse DNS
 
+**Network Diagnostics (v1.2.0):**
+- `--my-ip` - Show active network interfaces
+- `--my-ip --all` - Show all interfaces (including down)
+- `-s <url>` - Check HTTP/HTTPS status code
+- `--cert <host>` - Check SSL certificate validity
+- `--retry <N>` - Retry failed connections N times
+- `--retry-delay <sec>` - Delay between retries
+
 **Quick Tests:**
 - `-q host 80` - Single port
 - `-q host 80,443` - Multiple ports  
 - `-q host 80-100` - Port range
-- `-q 10.0.0.1-10 80` - IP range (NEW!)
+- `-q 10.0.0.1-10 80` - IP range
+- `-q host 80 -o results.txt` - Save to file
 
 **CSV Input:**
 - `--csv file.csv` - Read CSV file

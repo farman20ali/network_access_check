@@ -1,4 +1,16 @@
-# No external dependencies required - uses Python standard library
-# Optional packages you can install if you extend the tool:
-# colorama==0.4.6        # cross-platform terminal colors (optional)
-# anyio==3.7.0           # if converting to async frameworks
+# No Python dependencies required - netcheck is a pure Bash script
+# 
+# System dependencies (installed via apt/yum/pacman):
+# - bash (>= 4.0)
+# - telnet or netcat-openbsd
+# - curl (for HTTP status checks)
+# - openssl (for SSL certificate validation)
+# - bc (for time calculations)
+# - iproute2 or net-tools (for network interface display)
+# - dnsutils (for DNS lookups)
+# - iputils-ping (for ICMP ping tests)
+#
+# All dependencies are automatically installed by:
+# - install.sh (system-wide installation)
+# - build-deb.sh (DEB package)
+# - build-snap.sh (Snap package)

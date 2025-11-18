@@ -5,19 +5,23 @@
 A **production-ready network connectivity testing tool** with enterprise features!
 
 ```
-✅ Full-featured bash script (1100+ lines)
+✅ Full-featured bash script (1700+ lines)
 ✅ ICMP ping testing with statistics and URL support
-✅ DNS lookup with URL support
+✅ DNS lookup with URL support and multiple fallback methods
+✅ HTTP status checking with response codes and performance metrics
+✅ SSL certificate validation with expiry warnings
+✅ Network interface display with filtering (--my-ip)
+✅ Retry logic with configurable count and delay
 ✅ Quick mode parallel processing (>5 tests)
 ✅ Quick mode output file support (-o flag)
 ✅ Comprehensive input validation
 ✅ 3 installation methods (manual, DEB, Snap)
-✅ Complete documentation (10 guides)
+✅ Complete documentation (10+ guides)
 ✅ Build automation (Makefile + scripts)
 ✅ Test suites (all passing)
 ✅ Man page & bash completion
 ✅ Multi-OS support (6 Linux distributions)
-✅ Version 1.1.0 - GPL v3 licensed
+✅ Version 1.2.0 - GPL v3 licensed
 ✅ Dated result files for tracking
 ```
 
@@ -80,6 +84,11 @@ make test
 ./check_ip.sh -q google.com 443
 ./check_ip.sh --csv hosts.csv
 ./check_ip.sh -d google.com        # DNS lookup
+./check_ip.sh -p 8.8.8.8           # Ping test
+./check_ip.sh -s https://google.com # HTTP status
+./check_ip.sh --cert google.com    # SSL cert check
+./check_ip.sh --my-ip              # Show network interfaces
+./check_ip.sh --retry 3 hosts.txt  # Retry failed connections
 
 # Clean temporary files
 make clean
@@ -96,6 +105,11 @@ make install
 netcheck -v                       # Check version
 netcheck -q google.com 443        # Quick mode
 netcheck -d example.com           # DNS lookup
+netcheck -p github.com            # Ping test
+netcheck -s https://api.example.com  # HTTP status
+netcheck --cert google.com        # SSL certificate
+netcheck --my-ip                  # Network interfaces
+netcheck --retry 3 hosts.txt      # Retry failed connections
 netcheck --csv hosts.csv -j 50    # CSV mode, parallel
 
 # Uninstall
@@ -108,11 +122,11 @@ make uninstall
 ```bash
 # Build DEB package
 ./build-deb.sh
-# Creates: netcheck_1.0.0.deb
+# Creates: netcheck_1.2.0.deb
 
 # Build Snap package
 ./build-snap.sh
-# Creates: netcheck_1.0.0_amd64.snap
+# Creates: netcheck_1.2.0_amd64.snap
 ```
 
 ---
