@@ -48,14 +48,18 @@ A powerful, feature-rich command-line tool for testing network connectivity to m
 sudo snap install netcheck
 ```
 
-**Enable ping functionality (required for `-p` flag):**
+**Enable network diagnostics (required for `-p` and `--my-ip` flags):**
 ```bash
 sudo snap connect netcheck:network-observe
 ```
 
 **Benefits:** Auto-updates, universal Linux support, sandboxed security
 
-> **Note:** The `network-observe` connection is required for ICMP ping tests. Without it, the `-p/--ping` flag will fail with a permission error. All other features (TCP port tests, DNS lookup, HTTP status, SSL cert checks) work without this connection.
+> **Note:** The `network-observe` connection is required for:
+> - ICMP ping tests (`-p/--ping` flag)
+> - Network interface information (`--my-ip` flag)
+> 
+> Without this connection, these features will fail with permission errors. All other features (TCP port tests, DNS lookup, HTTP status, SSL cert checks, retry logic) work without this connection.
 
 ### Option 2: DEB Package (Ubuntu/Debian)
 

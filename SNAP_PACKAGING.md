@@ -258,6 +258,13 @@ snapcraft status netcheck
 # Install from Snap Store
 sudo snap install netcheck
 
+# IMPORTANT: Connect network-observe for full functionality
+sudo snap connect netcheck:network-observe
+
+# This enables:
+# - ICMP ping tests (-p/--ping flag)
+# - Network interface information (--my-ip flag)
+
 # Auto-updates enabled by default!
 
 # Update manually
@@ -265,6 +272,18 @@ sudo snap refresh netcheck
 
 # Uninstall
 sudo snap remove netcheck
+```
+
+**What users will see without network-observe:**
+
+When trying to use `--my-ip` or `-p/--ping` without the connection:
+```
+Error: Permission denied
+```
+
+Solution shown to users:
+```bash
+sudo snap connect netcheck:network-observe
 ```
 
 ## Advanced snapcraft.yaml Features
@@ -433,7 +452,60 @@ snap list netcheck  # Shows devmode/strict/classic
 - [ ] Upload: `snapcraft upload netcheck_x.x.x.snap`
 - [ ] Release: `snapcraft release netcheck <rev> stable`
 - [ ] Test install from store: `snap install netcheck`
+- [ ] Test network-observe: `snap connect netcheck:network-observe`
 - [ ] Update README with snap install instructions
+
+## Troubleshooting
+
+### Users Report "Permission Denied" Errors
+
+**Symptom:**
+```bash
+$ netcheck --my-ip
+Error: Permission denied
+
+$ netcheck -p google.com
+Error: Operation not permitted
+```
+
+**Cause:**
+The snap needs `network-observe` plug for ICMP ping and network interface access.
+
+**Solution:**
+```bash
+sudo snap connect netcheck:network-observe
+```
+
+**Check plug status:**
+```bash
+snap connections netcheck
+
+# Output should show:
+# Interface          Plug                     Slot
+# network            netcheck:network         :network
+# network-bind       netcheck:network-bind    :network-bind
+# network-observe    netcheck:network-observe :network-observe  # Must be connected
+```
+
+### Snap Build Issues
+
+**Issue: "unbound variable" error**
+- Ensure arrays are initialized: `declare -A array=()`
+- Use `set +u` around array length checks if needed
+
+**Issue: Dependencies not found (curl, openssl, bc)**
+- Add packages to `stage-packages` section
+- Include binaries in `stage` section:
+  ```yaml
+  stage:
+    - usr/bin/*
+    - usr/sbin/*
+    - lib/*
+  ```
+
+**Issue: Snap not finding staged files**
+- Check with: `find parts/netcheck/install -name "curl"`
+- Verify staging: `find prime/usr/bin -type f`
 
 ## Automatic Builds (CI/CD)
 

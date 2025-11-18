@@ -48,12 +48,15 @@ description: |
   - Security auditing and port scanning
   - Load balancer health checks
   
-  IMPORTANT: For ICMP ping functionality (-p flag), run after installation:
+  IMPORTANT: For full functionality, run after installation:
     sudo snap connect netcheck:network-observe
   
-  Without this connection, TCP port tests, DNS lookup, HTTP status checks,
-  and SSL certificate validation work normally, but ping tests will fail
-  with permission errors.
+  This connection enables:
+  - ICMP ping tests (-p/--ping flag)
+  - Network interface information (--my-ip flag)
+  
+  Without this connection, features like TCP port tests, DNS lookup, HTTP
+  status checks, SSL certificate validation, and retry logic work normally.
 
 grade: stable
 confinement: strict

@@ -76,12 +76,15 @@ description: |
   - Security auditing and port scanning
   - Load balancer health checks
   
-  IMPORTANT: For ICMP ping functionality (-p flag), run after installation:
+  IMPORTANT: For full functionality, run after installation:
     sudo snap connect netcheck:network-observe
   
-  Without this connection, TCP port tests, DNS lookup, HTTP status checks,
-  and SSL certificate validation work normally, but ping tests will fail
-  with permission errors.
+  This connection enables:
+  - ICMP ping tests (-p/--ping flag)
+  - Network interface information (--my-ip flag)
+  
+  Without this connection, features like TCP port tests, DNS lookup, HTTP
+  status checks, SSL certificate validation, and retry logic work normally.
 
 grade: stable
 confinement: strict
@@ -177,18 +180,19 @@ if [ -f "$SNAP_FILE" ]; then
     echo "1. Install locally (devmode for testing):"
     echo "   sudo snap install $SNAP_FILE --devmode --dangerous"
     echo ""
-    echo "1b. Enable ping functionality (REQUIRED for -p flag):"
+    echo "2. Enable full functionality (REQUIRED for -p and --my-ip flags):"
     echo "   sudo snap connect netcheck:network-observe"
     echo ""
-    echo "2. Test the command:"
+    echo "3. Test the command:"
     echo "   netcheck --help"
     echo "   netcheck -v                    # Check version"
     echo "   netcheck -q google.com 443     # Quick test"
     echo "   netcheck -d https://github.com # DNS lookup"
     echo "   netcheck -p 8.8.8.8            # Ping test"
+    echo "   netcheck --my-ip               # Show network interfaces"
     echo "   netcheck --csv hosts.csv       # CSV mode"
     echo ""
-    echo "3. Check logs if issues:"
+    echo "4. Check logs if issues:"
     echo "   snap logs netcheck"
     echo "   snap logs netcheck -f  # Follow logs"
     echo ""
