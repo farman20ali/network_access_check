@@ -287,8 +287,8 @@ parse_args() {
                 # Try using ip command (modern Linux)
                 if command -v ip &> /dev/null; then
                     # Collect interfaces first
-                    declare -A up_interfaces
-                    declare -A down_interfaces
+                    declare -A up_interfaces=()
+                    declare -A down_interfaces=()
                     
                     # Get all active interfaces with IPs
                     while IFS= read -r line; do
@@ -316,7 +316,13 @@ parse_args() {
                     done < <(ip link show 2>/dev/null)
                     
                     # Display UP interfaces first (sorted)
-                    if [[ ${#up_interfaces[@]} -gt 0 ]]; then
+                    # Temporarily disable set -u for array length check
+                    set +u
+                    up_count=${#up_interfaces[@]}
+                    down_count=${#down_interfaces[@]}
+                    set -u
+                    
+                    if [[ $up_count -gt 0 ]]; then
                         for interface in $(printf '%s\n' "${!up_interfaces[@]}" | sort); do
                             IFS='|' read -r ipv4 ipv6 state <<< "${up_interfaces[$interface]}"
                             
@@ -333,7 +339,7 @@ parse_args() {
                     fi
                     
                     # Display DOWN interfaces only if --all flag is set
-                    if [[ $SHOW_ALL_INTERFACES -eq 1 ]] && [[ ${#down_interfaces[@]} -gt 0 ]]; then
+                    if [[ $SHOW_ALL_INTERFACES -eq 1 ]] && [[ $down_count -gt 0 ]]; then
                         echo "Inactive Interfaces:"
                         echo ""
                         for interface in $(printf '%s\n' "${!down_interfaces[@]}" | sort); do

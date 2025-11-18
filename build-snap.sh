@@ -117,6 +117,10 @@ parts:
       - README.md
       - EXAMPLES.md
       - LICENSE
+      - usr/bin/*
+      - usr/sbin/*
+      - lib/*
+      - usr/lib/*
     stage-packages:
       - telnet
       - netcat-openbsd
