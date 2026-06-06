@@ -1,6 +1,5 @@
 #!/bin/bash
-
-# Network Connectivity Checker - Uninstall Script
+# Network Connectivity Checker - Uninstaller Script
 
 set -e
 
@@ -11,64 +10,51 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-INSTALL_DIR="/usr/local/bin"
-COMMAND_NAME="netcheck"
-
 echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║    Network Connectivity Checker - Uninstaller         ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Check if running as root
-if [[ $EUID -ne 0 ]]; then
-   echo -e "${RED}This script must be run as root${NC}"
-   echo -e "${YELLOW}Please run: sudo ./uninstall.sh${NC}"
-   exit 1
+# Find pip3
+PIP_CMD="pip3"
+if ! command -v pip3 &> /dev/null; then
+    PIP_CMD="python3 -m pip"
 fi
 
-echo -e "${YELLOW}This will remove netcheck from your system.${NC}"
-read -p "Are you sure? (y/N): " -n 1 -r
-echo ""
+echo -e "${YELLOW}Uninstalling netcheck...${NC}"
 
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${BLUE}Uninstallation cancelled.${NC}"
-    exit 0
+# Check for pep668 flags
+INSTALL_FLAGS=""
+if $PIP_CMD uninstall --help 2>&1 | grep -q "break-system-packages"; then
+    INSTALL_FLAGS="--break-system-packages"
 fi
 
-echo ""
-echo -e "${BLUE}Uninstalling netcheck...${NC}"
-
-# Remove main script
-if [[ -f "$INSTALL_DIR/$COMMAND_NAME" ]]; then
-    rm -f "$INSTALL_DIR/$COMMAND_NAME"
-    echo -e "${GREEN}✓ Removed: $INSTALL_DIR/$COMMAND_NAME${NC}"
+# Uninstall python package
+if $PIP_CMD show netcheck &>/dev/null; then
+    if $PIP_CMD show netcheck | grep -q "Location:.*\.local"; then
+        $PIP_CMD uninstall -y netcheck
+    else
+        sudo $PIP_CMD uninstall -y netcheck $INSTALL_FLAGS
+    fi
+    echo -e "${GREEN}✓ Python package uninstalled.${NC}"
 else
-    echo -e "${YELLOW}  Command not found: $INSTALL_DIR/$COMMAND_NAME${NC}"
+    echo -e "${YELLOW}netcheck is not registered via pip. Cleaning up binary files...${NC}"
 fi
 
-# Remove man page
-if [[ -f "/usr/local/share/man/man1/netcheck.1" ]]; then
-    rm -f "/usr/local/share/man/man1/netcheck.1"
+# Clean executable binaries
+sudo rm -f /usr/local/bin/netcheck 2>/dev/null || true
+rm -f ~/.local/bin/netcheck 2>/dev/null || true
+
+# Remove man pages and completions
+sudo rm -f /usr/local/share/man/man1/netcheck.1 2>/dev/null || true
+rm -f ~/.local/share/man/man1/netcheck.1 2>/dev/null || true
+sudo rm -f /etc/bash_completion.d/netcheck 2>/dev/null || true
+rm -f ~/.local/share/bash-completion/completions/netcheck 2>/dev/null || true
+
+# Update man database
+if command -v mandb > /dev/null 2>&1; then
     mandb -q 2>/dev/null || true
-    echo -e "${GREEN}✓ Removed: man page${NC}"
-else
-    echo -e "${YELLOW}  Man page not found${NC}"
 fi
 
-# Remove bash completion
-if [[ -f "/etc/bash_completion.d/netcheck" ]]; then
-    rm -f "/etc/bash_completion.d/netcheck"
-    echo -e "${GREEN}✓ Removed: bash completion${NC}"
-else
-    echo -e "${YELLOW}  Bash completion not found${NC}"
-fi
-
-echo ""
-echo -e "${GREEN}╔════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║        Uninstallation completed successfully!         ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${YELLOW}Note: Dependencies (telnet, netcat) were not removed.${NC}"
-echo -e "${YELLOW}Remove them manually if no longer needed.${NC}"
+echo -e "${GREEN}✓ Uninstallation completed successfully!${NC}"
 echo ""

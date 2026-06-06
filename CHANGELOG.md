@@ -5,6 +5,33 @@ All notable changes to netcheck will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-06-06
+
+### Added
+- **Complete Pure Python 3 Rewrite**:
+  - Eliminated legacy Bash scripts and subprocess dependencies in core checking logic.
+  - Native cross-platform execution (Linux, macOS, Windows).
+  - High-performance, concurrent connectivity checking powered by Python's `concurrent.futures`.
+- **Model Context Protocol (MCP) Server**:
+  - Built-in MCP integration (run with `netcheck --mcp` or `python3 -m netcheck.mcp.server`).
+  - Exposes network diagnostic tools (`dns_lookup`, `ping_host`, `check_tcp_port`, `check_http_status`, `check_ssl_certificate`, and `list_interfaces`) to AI assistants.
+- **Lenient Target Parsing & Normalizer**:
+  - Input lines are parsed flexibly, extracting hosts and ports from colon-separated lists, comma-separated lists, bracketed IPv6 addresses, and raw URLs (automatically stripping schemes, paths, and slashes).
+  - Handles inline comments (`#`), IP ranges, CIDR subnets, and port ranges seamlessly.
+- **Advanced Subcommands**:
+  - Introduced CLI subcommands (`tcp`, `dns`, `http`, `ssl`, `ping`, `interfaces`) for direct usage, while maintaining full backward-compatible legacy flags (`-q`, `-d`, `-p`, `-s`, `--cert`, `--my-ip`).
+- **Robust SSL & Fallback Engine**:
+  - Sequential IP attempt loop across all resolved DNS records (IPv4 & IPv6).
+  - Custom `cryptography` fallback parsing to fetch certificates details (subject, issuer, dates, SANs) even when validation fails strictly.
+- **Color-Coded Output Alignments**:
+  - Strips ANSI escape codes dynamically to maintain box alignment and layout padding in terminal outputs.
+  - Safe, color-free logging when saving outputs to date-based result files (`result-*.txt`, `fail-*.txt`, `combined-*.txt`).
+
+### Changed
+- Promoted standard library network calls over external CLI binary dependency wrapping.
+- Switched default output formatting to colored CLI panels with clean fallbacks.
+- Updated versioning configuration in `pyproject.toml`.
+
 ## [1.2.0] - 2025-01-18
 
 ### Added

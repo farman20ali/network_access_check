@@ -1,789 +1,190 @@
-# Network Connectivity Checker (netcheck)
+# Network Connectivity Checker (`netcheck`)
 
-A powerful, feature-rich command-line tool for testing network connectivity to multiple hosts and ports with parallel processing, multiple output formats, and automatic dependency management.
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](pyproject.toml)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)](#)
 
-## Features
+A premium, cross-platform, production-grade **Network Intelligence Engine & CLI** written in pure Python 3. Overhauled from the legacy hybrid Bash scripts to support high-concurrency diagnostics, lenient target input normalization, and an integrated **Model Context Protocol (MCP) Server** for AI assistants.
 
-### Core Testing Features
-- ✅ **ICMP Ping Testing** - Test connectivity with ping (accepts URLs and IPs)
-- ✅ **DNS Lookup** - Resolve hostnames to IPs with multiple fallback methods (accepts URLs)
-- ✅ **TCP Port Testing** - Check if ports are open and responsive
-- ✅ **HTTP Status Checking** - Get HTTP/HTTPS response codes and performance metrics
-- ✅ **SSL Certificate Validation** - Check certificate expiry and validity
+---
 
-### Network Diagnostics (v1.2.0)
-- 🆕 **Show Network Interfaces** - Display all network interfaces with IPs (--my-ip)
-- 🆕 **Retry Logic** - Automatically retry failed connections with configurable count and delay
-- 🆕 **HTTP Status Codes** - Check website status with response time and size (-s/--status)
-- 🆕 **SSL Certificate Check** - Validate SSL/TLS certificates with expiry warnings (--cert)
+## 🚀 Key Features
 
-### Performance & Automation
-- ✅ **Parallel Processing** - Check multiple hosts simultaneously (up to 256 jobs)
-- ✅ **Quick Mode Parallel Processing** - Automatic parallel execution for wide IP ranges (>5 tests)
-- ✅ **Quick Mode Output File** - Save quick mode results with -o/--output flag
-- ✅ **Response Time Measurement** - See connection latency in milliseconds
+* **Zero-Dependency Core**: Built with the Python standard library for high portability, with optional `cryptography` integration for certificate inspection fallbacks.
+* **Cross-Platform**: Run natively on **Linux**, **macOS**, and **Windows** with consistent terminal layouts and behaviors.
+* **Model Context Protocol (MCP)**: Turn `netcheck` into a local MCP server to empower Claude, ChatGPT, or other AI agents with real-time network diagnostic capabilities.
+* **Lenient Target Parsing**: Accepts raw inputs from CSVs, space/comma-separated lines, bracketed IPv6, and raw URLs (automatically stripping paths and schemes).
+* **Network & Port Range Expansions**: Full support for IP ranges (`192.168.1.1-50`), CIDR subnets (`10.0.0.0/24`), multiple ports (`80,443`), and port ranges (`8000-8100`).
+* **Robust SSL Validation**: Loops sequentially over all resolved IPv4 & IPv6 records and falls back to DER parsing when certificates fail strict trust verification.
+* **Interface Auto-Discovery**: Detects active network interfaces, dynamically parses default gateways (via `/proc/net/route` on Linux), and queries public IP addresses.
+* **High-Speed Concurrency**: Execute batch checks concurrently with custom thread pools and real-time progress bars.
 
-### Input & Output
-- ✅ **Multiple Output Formats** - Text, JSON, CSV, XML
-- ✅ **Quick Test Mode** - Test single host without creating files
-- ✅ **IP Range Support** - Check IP ranges (192.168.1.1-50) and CIDR (10.0.0.0/24)
-- ✅ **Port Ranges** - Check port ranges (8000-8100) or multiple ports (80,443,8080)
-- ✅ **CSV File Support** - Read from CSV files (host,port format)
-- ✅ **Dated Result Files** - Automatic timestamped output files
+---
 
-### Quality & Usability
-- ✅ **Progress Bar** - Real-time progress tracking
-- ✅ **Version Information** - Check tool version with -v flag
-- ✅ **Input Validation** - Comprehensive validation with helpful warnings for malformed input
-- ✅ **Automatic Dependency Installation** - Installs telnet and netcat if missing
-- ✅ **Flexible Input** - File, stdin, or quick test mode
-- ✅ **Man Page & Tab Completion** - Full documentation and bash completion
-- ✅ **Multi-OS Support** - Ubuntu, Debian, CentOS, Fedora, Arch, openSUSE
+## 📦 Installation
 
-## Installation
+### Option 1: System-wide (Pip / Setup)
+Install directly from the source directory:
+```bash
+sudo make install
+```
+Or manually using pip:
+```bash
+pip install .
+```
+Once installed, the `netcheck` command is available system-wide.
 
-### Option 1: From Snap Store (Recommended - Works on ALL Linux!)
-
+### Option 2: Snap Store (Linux Universal)
 ```bash
 sudo snap install netcheck
 ```
-
-**Enable network diagnostics (required for `-p` and `--my-ip` flags):**
+*Note: To grant permission for ICMP Ping (`-p`) and Network Interfaces (`--my-ip`), connect the network-observe interface:*
 ```bash
 sudo snap connect netcheck:network-observe
 ```
 
-**Benefits:** Auto-updates, universal Linux support, sandboxed security
-
-> **Note:** The `network-observe` connection is required for:
-> - ICMP ping tests (`-p/--ping` flag)
-> - Network interface information (`--my-ip` flag)
-> 
-> Without this connection, these features will fail with permission errors. All other features (TCP port tests, DNS lookup, HTTP status, SSL cert checks, retry logic) work without this connection.
-
-### Option 2: DEB Package (Ubuntu/Debian)
-
+### Option 3: Developer / Local Run
+Run without installation using the Python module syntax:
 ```bash
-# Build the package
-./build-deb.sh
-
-# Install
-sudo dpkg -i netcheck_1.2.0.deb
+PYTHONPATH=. python3 -c "from netcheck.cli import main; main()" [OPTIONS]
 ```
 
-### Option 3: Manual System-wide Installation
+---
 
+## 🛠️ CLI Subcommands
+
+`netcheck` 2.0.0 introduces dedicated subcommands for modular diagnostics.
+
+### 1. TCP Connectivity Check (`tcp`)
+Check if TCP ports are open. Supports lists and ranges.
 ```bash
-# Using Makefile (recommended)
-sudo make install
-
-# Or directly
-sudo ./install.sh
+netcheck tcp google.com 80,443
+netcheck tcp 192.168.1.1-10 22,80 --timeout 2
 ```
 
-This will:
-- Install the command as `netcheck` in `/usr/local/bin`
-- Automatically detect your OS and install dependencies (telnet, netcat)
-- Create a man page (`man netcheck`)
-- Add bash tab completion
-- Works on: Ubuntu, Debian, CentOS, RHEL, Fedora, Arch, openSUSE
-
-### Option 4: Local Installation (No sudo)
-
+### 2. DNS Resolution (`dns`)
+Resolve hostnames to IPv4/IPv6, query reverse DNS, and extract aliases.
 ```bash
-chmod +x check_ip.sh
-# Run directly: ./check_ip.sh
+netcheck dns google.com
+netcheck dns https://api.github.com/v3/repos   # Automatically extracts host
 ```
 
-**See:** [PUBLISHING_GUIDE.md](PUBLISHING_GUIDE.md) for package publishing details
-
-## Quick Start
-
-### Quick Test (Single Host)
-
+### 3. HTTP Status Check (`http`)
+Measure HTTP/HTTPS response latency, descriptive status codes, redirects, and content size.
 ```bash
-# Test a single host - no files created, instant results
-netcheck -q google.com 443
-netcheck -q 192.168.1.1 80
-netcheck -q localhost 3306
-
-# Test multiple ports at once
-netcheck -q server.com 80,443,8080
-netcheck -q localhost 80,443
-
-# Test port range
-netcheck -q localhost 8000-8100
-netcheck -q server.com 9000-9010
-
-# NEW: Test IP range (multiple hosts)
-netcheck -q 10.90.95.72-75 50000
-netcheck -q 192.168.1.1-10 22
+netcheck http https://google.com
+netcheck http my-service.local -V              # -V / --verbose prints headers
 ```
 
-### DNS Lookup
-
+### 4. SSL Certificate Inspection (`ssl`)
+Verify SSL/TLS certificate validity, expiry, subject common names, issuers, and SANs.
 ```bash
-# Resolve hostname to IP addresses
-netcheck -d google.com
-netcheck -d github.com
-
-# NEW: Also accepts URLs (strips scheme/path automatically)
-netcheck -d https://api.example.com
-netcheck -d http://services.company.com:8080/path
+netcheck ssl google.com
+netcheck ssl expired-cert.local -V             # Prints SANs and validation errors
 ```
 
-### ICMP Ping Test
-
+### 5. ICMP Ping Test (`ping`)
+Send raw ICMP packets to verify host reachability.
 ```bash
-# Ping a host (4 packets with statistics)
-netcheck -p 8.8.8.8
-netcheck -p google.com
-
-# NEW: Also accepts URLs (strips scheme/path automatically)
-netcheck -p https://github.com
-netcheck -p http://api.example.com
+netcheck ping 8.8.8.8
+netcheck ping https://github.com               # Automatically extracts IP/host
 ```
 
-### Network Interface Information (v1.2.0)
-
+### 6. Interface Auto-Discovery (`interfaces`)
+List active network interfaces, default gateways, and retrieve your public IP address.
 ```bash
-# Show active network interfaces only (default)
-netcheck --my-ip
-netcheck -ip
-
-# Show all interfaces including inactive ones
-netcheck --my-ip --all
+netcheck interfaces
+netcheck interfaces --all                      # Include inactive (DOWN) interfaces
 ```
 
-Output:
-```
-Network Interface Information
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
 
-📡 Active Network Interfaces (UP only):
-   Use '--my-ip --all' to show all interfaces
+## 🤖 Model Context Protocol (MCP) Server
 
-Interface: enp1s0
-  IPv4: 10.90.19.195
-  Status: ✅ UP
+`netcheck` includes an integrated MCP server, allowing LLMs (like Claude Desktop) to invoke network diagnostics directly.
 
-Interface: wlp0s20f3
-  IPv4: 192.168.0.137
-  Status: ✅ UP
-
-🌐 Default Gateway: 192.168.0.1
-   Via Interface: wlp0s20f3
-
-🌍 Public IP Address:
-  154.91.162.123
-```
-
-### HTTP Status Checking (v1.2.0)
-
+### Running the MCP Server
 ```bash
-# Check HTTP/HTTPS status codes
-netcheck -s https://google.com
-netcheck -s http://api.example.com
-
-# Get detailed headers with verbose mode
-netcheck -s https://github.com -V
+netcheck --mcp
 ```
-
-Output:
-```
-HTTP Status Check for: https://google.com
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Sending HTTP request...
-
-┌─────────────────────────────────────────────┐
-│ URL: https://google.com                     │
-├─────────────────────────────────────────────┤
-│ Status: ✅ SUCCESS                          │
-│ Code: 200 OK                                │
-│ Response Time: 145ms                        │
-│ Content Size: 15.2 KB                       │
-└─────────────────────────────────────────────┘
-```
-
-### SSL Certificate Validation (v1.2.0)
-
+Or via Python:
 ```bash
-# Check SSL/TLS certificate
-netcheck --cert https://google.com
-netcheck --cert github.com:443
-
-# Verbose mode shows SANs (Subject Alternative Names)
-netcheck --cert google.com -V
+python3 -m netcheck.mcp.server
 ```
 
-Output:
-```
-SSL/TLS Certificate Check for: google.com:443
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Connecting to google.com:443...
-
-┌─────────────────────────────────────────────┐
-│ Host: google.com:443                        │
-├─────────────────────────────────────────────┤
-│ Status: ✅ VALID                            │
-├─────────────────────────────────────────────┤
-│ Certificate Details:                        │
-├─────────────────────────────────────────────┤
-│ Subject: CN = *.google.com                  │
-│ Issuer: C = US, O = Google Trust Servi...  │
-├─────────────────────────────────────────────┤
-│ Valid From: Oct 15 08:15:42 2024 GMT       │
-│ Valid Until: Jan  7 08:15:41 2025 GMT      │
-│ Days Until Expiry: 62                       │
-└─────────────────────────────────────────────┘
-```
-
-### Retry Failed Connections (v1.2.0)
-
-```bash
-# Retry failed connections 3 times (works with all modes)
-netcheck --retry 3 hosts.txt
-
-# Custom retry delay (default: 1 second)
-netcheck --retry 3 --retry-delay 2 hosts.txt
-
-# Works in quick mode too
-netcheck -q 192.168.1.1 80 --retry 5 --retry-delay 1
-```
-
-### Version Information
-
-```bash
-# Check netcheck version
-netcheck -v
-netcheck --version
-```
-
-Output:
-```
-DNS Lookup for: google.com
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Hostname: google.com
-
-IP Addresses:
-  142.250.202.78
-  2a00:1450:4019:812::200e (IPv6)
-
-Aliases:
-
-Reverse DNS:
-  pnfjra-an-in-f14.1e100.net.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-### Version Information
-
-```bash
-# Check netcheck version
-netcheck -v
-netcheck --version
-```
-
-Output:
-```
-Quick Test Mode
-Host: localhost
-Port(s): 80,443
-Timeout: 5s
-
-Testing 2 port(s)...
-
-┌─────────────────────────────────────────────┐
-│ Host: localhost                             │
-│ Port: 80                                    │
-├─────────────────────────────────────────────┤
-│ Status: ✓ CONNECTED                         │
-│ Method: netcat                              │
-│ Response Time: 1ms                          │
-└─────────────────────────────────────────────┘
-
-Quick Test Summary
-════════════════════════════════════════════
-Total Ports: 2
-Successful:  1
-Failed:      1
-════════════════════════════════════════════
-```
-
-### CSV File Support
-
-```bash
-# Read from CSV file
-netcheck --csv hosts.csv
-
-# CSV from stdin
-cat hosts.csv | netcheck --csv
-
-# Piped CSV data
-echo -e "host,port\ngoogle.com,443\nlocalhost,80" | netcheck --csv
-```
-
-**CSV Format:**
-```csv
-host,port
-google.com,443
-server.local,80
-192.168.1.1,22
-192.168.1.1-5,80
-localhost,"80,443,8080"
-10.0.0.0/24,22
-```
-
-**Features:**
-- Automatic header detection and skipping
-- Supports quoted fields for multiple ports
-- Supports IP ranges in CSV: `192.168.1.1-50,80`
-- Supports CIDR notation: `192.168.1.0/24,22`
-- Supports multiple ports: `host,"80,443,8080"`
-
-### Batch Testing
-
-Create a file `hosts.txt`:
-```
-google.com 443
-github.com 443
-192.168.1.1 80
-localhost 3306
-8.8.8.8 53
-```
-
-Run the check:
-```bash
-netcheck hosts.txt
-```
-
-## Usage
-
-```
-netcheck [OPTIONS] [input_file]
-
-OPTIONS:
-    -t, --timeout <seconds>     Connection timeout (default: 5)
-    -j, --jobs <number>         Max parallel jobs (default: 10)
-    -V, --verbose               Verbose output
-    -f, --format <format>       Output format: text, json, csv, xml (default: text)
-    -c, --combined              Create combined report with all results
-    -q, --quick <host> <port>   Quick test mode (no files created)
-    -o, --output <file>         Save quick mode results to file
-    -d, --dns <hostname>        Resolve DNS and show IP address (accepts URLs)
-    -p, --ping <host>           Ping host using ICMP (accepts URLs/IPs)
-    -s, --status <url>          Check HTTP/HTTPS status code and response time
-    --cert <host>               Check SSL/TLS certificate validity and expiration
-    --my-ip, -ip                Show all network interfaces and IP addresses (UP only)
-    --my-ip --all               Show all interfaces including inactive ones
-    --retry <number>            Retry failed connections N times (default: 1, no retry)
-    --retry-delay <seconds>     Delay between retries in seconds (default: 1)
-    --csv                       Input file is in CSV format (host,port)
-    -v, --version               Show version information
-    -h, --help                  Show help message
-```
-
-## Examples
-
-### Basic Usage
-```bash
-# Check hosts from file
-netcheck hosts.txt
-
-# From stdin
-cat hosts.txt | netcheck
-
-# Verbose mode
-netcheck -V hosts.txt
-echo "google.com 443" | netcheck -V
-```
-
-### DNS Resolution
-```bash
-# Lookup hostname
-netcheck -d google.com
-netcheck -d github.com
-
-# Works with URLs too (strips http://, https://, paths)
-netcheck -d https://api.example.com
-netcheck -d http://services.company.com:8080/api/v1
-```
-
-### ICMP Ping
-```bash
-# Ping IP address
-netcheck -p 8.8.8.8
-netcheck -p 192.168.1.1
-
-# Ping hostname
-netcheck -p google.com
-
-# Works with URLs too
-netcheck -p https://github.com
-```
-netcheck -d google.com
-netcheck -d github.com
-
-# Shows: IPv4, IPv6, aliases, reverse DNS
-```
-
-### Version Check
-```bash
-# Show netcheck version
-netcheck -v
-netcheck --version
-```
-
-### Fast Parallel Checking
-```bash
-# Check 20 hosts simultaneously with 2-second timeout
-netcheck -t 2 -j 20 hosts.txt
-
-# High-speed scanning with 100 parallel jobs
-netcheck -j 100 -t 1 large-list.txt
-```
-
-### Different Output Formats
-
-**JSON Output:**
-```bash
-netcheck -f json hosts.txt
-```
-Output: `result.txt`
+### Claude Desktop Configuration
+Add the following to your `claude_desktop_config.json`:
 ```json
-{"check_date":"2025-11-11 10:59:21","results":[
-  {"status":"success","host":"google.com","port":443,"method":"netcat","timestamp":"2025-11-11 10:59:21"}
-]}
+{
+  "mcpServers": {
+    "netcheck": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "netcheck.mcp.server"
+      ],
+      "env": {
+        "PYTHONPATH": "/path/to/network_access_check"
+      }
+    }
+  }
+}
 ```
 
-**CSV Output:**
-```bash
-netcheck -f csv hosts.txt
-```
-Output: `result.txt`
-```csv
-Status,Host,Port,Method,Timestamp
-"SUCCESS","google.com",443,"netcat","2025-11-11 11:00:05"
-```
-
-**XML Output:**
-```bash
-netcheck -f xml hosts.txt
-```
-
-### Combined Report
-```bash
-# Get all results (success + failures) in one file
-netcheck -c hosts.txt
-# Creates: combined-2025-11-11.txt
-```
-
-### Verbose Mode
-```bash
-# See detailed output for each host
-netcheck -v hosts.txt
-```
-
-## Input Format
-
-Each line should contain: `HOST PORT(S)`
-
-```
-# Basic format
-192.168.1.1 80
-
-# Multiple ports (comma-separated)
-192.168.1.1 80,443,8080
-
-# Port range
-192.168.1.1 8000-8100
-
-# IP range (last octet)
-192.168.1.1-50 80
-
-# CIDR notation (subnet)
-192.168.1.0/24 80
-
-# Combined: IP range + multiple ports
-192.168.1.1-10 80,443,8080
-
-# Comments are supported
-# This is a comment
-google.com 443
-```
-
-### Range Examples
-
-**IP Ranges:**
-- `192.168.1.1-50 80` - Checks 192.168.1.1 through 192.168.1.50 on port 80 (50 checks)
-- `10.0.0.1-5 443` - Checks 5 IPs on port 443
-
-**CIDR Notation:**
-- `192.168.1.0/24 80` - Checks entire /24 subnet (254 hosts)
-- `10.0.0.0/28 22` - Checks /28 subnet (14 usable hosts)
-- Note: Network and broadcast addresses are skipped for /24 and smaller
-
-**Multiple Ports:**
-- `server.com 80,443,8080` - Checks 3 ports on same host
-- `192.168.1.1 22,80,443,3306,8080` - Checks 5 ports
-
-**Port Ranges:**
-- `localhost 8000-8100` - Checks ports 8000 through 8100 (101 ports)
-- `server.com 9000-9010` - Checks 11 ports
-- Note: Port ranges >1000 ports are limited to first 1000
-
-**Combined:**
-- `192.168.1.1-10 80,443` - 10 IPs × 2 ports = 20 checks
-- `10.0.0.0/28 22,80,443` - 14 IPs × 3 ports = 42 checks
-
-## Output Files
-
-- **result.txt** - Successful connections
-- **fail-YYYY-MM-DD.txt** - Failed connections (dated)
-- **combined-YYYY-MM-DD.txt** - All results (when using `-c` flag)
-
-## Use in Scripts
-
-```bash
-#!/bin/bash
-
-# Check if database is up
-if netcheck -q db.example.com 3306 > /dev/null 2>&1; then
-    echo "Database is online!"
-else
-    echo "Database is down!"
-    exit 1
-fi
-
-# Batch check and parse JSON
-netcheck -f json servers.txt
-# Process result.txt with jq or other JSON tools
-```
-
-## Requirements
-
-- Bash 4.0+
-- telnet (auto-installed)
-- netcat (auto-installed)
-- timeout command (usually pre-installed)
-
-## Troubleshooting
-
-### Dependencies Not Installing Automatically
-
-If automatic installation fails, install manually:
-
-**Ubuntu/Debian:**
-```bash
-sudo apt install telnet netcat-openbsd
-```
-
-**CentOS/RHEL/Fedora:**
-```bash
-sudo yum install telnet nc
-# or
-sudo dnf install telnet nc
-```
-
-**Arch/Manjaro:**
-```bash
-sudo pacman -S inetutils openbsd-netcat
-```
-
-### Permission Denied
-
-Make sure the script is executable:
-```bash
-chmod +x check_ip.sh
-```
-
-For system-wide installation, use sudo:
-```bash
-sudo ./install.sh
-```
-
-## Uninstallation
-
-```bash
-sudo ./uninstall.sh
-```
-
-This removes:
-- `/usr/local/bin/netcheck`
-- Man page
-- Bash completion
-
-Dependencies (telnet, netcat) are NOT removed.
-
-## Documentation
-
-View full manual:
-```bash
-man netcheck
-```
-
-## Advanced Examples
-
-### Scan Entire Subnet
-```bash
-# Check SSH on entire /24 subnet
-echo "192.168.1.0/24 22" | netcheck -j 50
-
-# Check common web ports on subnet
-echo "10.0.0.0/26 80,443,8080" | netcheck -f csv
-```
-
-### Port Scanning
-```bash
-# Scan port range on single host
-echo "server.local 1-1024" | netcheck -j 100 > scan-results.txt
-
-# Check common service ports
-echo "192.168.1.1 22,80,443,3306,5432,6379,8080,9000" | netcheck
-```
-
-### Network Discovery
-```bash
-# Find active hosts in range
-cat << EOF | netcheck -j 20
-192.168.1.1-254 22
-192.168.1.1-254 80
-192.168.1.1-254 443
-EOF
-```
-
-### Combined Scans
-```bash
-# Check multiple subnets with multiple ports
-cat << EOF | netcheck -f json -c
-192.168.1.0/24 80,443
-192.168.2.0/24 80,443
-10.0.0.0/24 22,3389
-EOF
-```
-
-### Data Center Health Check
-```bash
-# Check web servers cluster
-echo "web-{01..10}.prod.com 80,443" > servers.txt
-# Expand in bash, then check
-for i in {1..10}; do echo "web-$(printf %02d $i).prod.com 80,443"; done | netcheck -j 20
-```
-```bash
-# Check every 5 minutes (add to crontab)
-*/5 * * * * /usr/local/bin/netcheck /path/to/hosts.txt
-```
-
-### Export to Excel
-```bash
-# Generate CSV and open in Excel
-netcheck -f csv hosts.txt
-libreoffice result.txt
-```
-
-### JSON API Integration
-```bash
-# Check and POST results to monitoring API
-netcheck -f json hosts.txt
-curl -X POST https://api.monitor.com/results \
-     -H "Content-Type: application/json" \
-     -d @result.txt
-```
-
-### Quick Health Check Script
-```bash
-#!/bin/bash
-# health-check.sh
-
-CRITICAL_SERVICES=(
-    "db.prod.com 3306"
-    "api.prod.com 443"
-    "cache.prod.com 6379"
-)
-
-for service in "${CRITICAL_SERVICES[@]}"; do
-    if ! netcheck -q $service > /dev/null 2>&1; then
-        echo "ALERT: $service is down!"
-        # Send notification
-    fi
-done
-```
-
-## Documentation
-
-- **[README.md](README.md)** - Main documentation (this file)
-- **[EXAMPLES.md](EXAMPLES.md)** - Comprehensive examples and real-world scenarios
-- **[INPUT_VALIDATION.md](INPUT_VALIDATION.md)** - Input format and validation guide
-- **[INSTALL.md](INSTALL.md)** - Installation instructions
-- **[MAKEFILE_GUIDE.md](MAKEFILE_GUIDE.md)** - Understanding the Makefile
-- **[DEB_PACKAGING.md](DEB_PACKAGING.md)** - How to create DEB packages
-- **[SNAP_PACKAGING.md](SNAP_PACKAGING.md)** - How to create Snap packages
-- **[PUBLISHING_GUIDE.md](PUBLISHING_GUIDE.md)** - Quick reference for publishing
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is open-source. See LICENSE file for details.
-
-## Author
-
-Network Access Check Tool
-
-## Support
-
-- Report issues on GitHub
-- Check man page: `man netcheck`
-- See examples: [EXAMPLES.md](EXAMPLES.md)
-        # Send alert email/SMS
-    fi
-done
-```
-
-## Contributing
-
-Contributions welcome! Please test on your OS and submit pull requests.
-
-## License
-
-GNU General Public License v3 (GPL-3.0)
-
-This project is licensed under GPL v3, which means:
-- ✅ Free to use for any purpose
-- ✅ Free to modify and improve
-- ✅ Free to distribute
-- ✅ Can be used commercially
-- ⚠️ Any modifications must also be open source (copyleft)
-- ⚠️ Cannot create proprietary closed-source versions
-
-See [LICENSE](LICENSE) file for full details.
-
-## Version
-
-Version 1.0.0 - November 2025
-
-Check version: `netcheck -v` or `netcheck --version`
-
-## Documentation
-
-- **[README.md](README.md)** - Main documentation (this file)
-- **[EXAMPLES.md](EXAMPLES.md)** - Comprehensive examples and real-world scenarios
-- **[INSTALL.md](INSTALL.md)** - Installation instructions
-- **[MAKEFILE_GUIDE.md](MAKEFILE_GUIDE.md)** - Understanding the Makefile
-- **[DEB_PACKAGING.md](DEB_PACKAGING.md)** - How to create DEB packages
-- **[SNAP_PACKAGING.md](SNAP_PACKAGING.md)** - How to create Snap packages
-- **[PUBLISHING_GUIDE.md](PUBLISHING_GUIDE.md)** - Quick reference for publishing
-
-## Support
-
-For issues and questions:
-- Check `man netcheck` for full documentation
-- Run `netcheck --help` for quick reference
-- Run `netcheck -v` for version information
-- Run `netcheck -d <hostname>` for DNS lookup
-- View logs in result.txt and fail-*.txt files
-- Report issues on GitHub
+#### Exposed MCP Tools:
+* `dns_lookup`: Resolve a hostname to its IP addresses.
+* `ping_host`: Ping a host (ICMP) and returns packet statistics.
+* `check_tcp_port`: Check if a port is open on a host.
+* `check_http_status`: Perform an HTTP GET request to check status, size, and latency.
+* `check_ssl_certificate`: Validate and retrieve SSL certificate attributes.
+* `list_interfaces`: Retrieve network interface details, gateway, and public IP.
+
+---
+
+## 📝 Input Normalization & Ranges
+
+The `netcheck` engine is designed with a **Lenient Target Parser**. It reads from files or standard input and accepts diverse formats.
+
+### Supported Formats:
+* **Basic space-separated**: `google.com 443`
+* **Colon-separated**: `192.168.1.1:80`
+* **IPv6 bracketed**: `[2a00:1450:4018:80f::200e]:443`
+* **HTTP/HTTPS URLs**: `https://api.github.com:8443/users/octocat` (extracts `api.github.com` and port `8443`)
+* **CSV Files** (using `--csv` flag):
+  ```csv
+  host,port
+  google.com,443
+  192.168.1.1-5,"80,443"
+  ```
+
+### Ranges & CIDR Expansions:
+* **IP Ranges**: `192.168.1.1-10 80` (Checks `.1` through `.10` on port 80)
+* **Subnet CIDRs**: `192.168.1.0/24 22` (Scans the entire `/24` subnet on SSH)
+* **Port Lists**: `localhost 80,443,8080`
+* **Port Ranges**: `localhost 8000-8100`
+
+---
+
+## 💾 Legacy Option Map
+
+`netcheck` maintains full backward compatibility with all legacy parameters:
+
+| Legacy Flag | Description | Equivalent Subcommand |
+|---|---|---|
+| `-q, --quick <host> <port>` | Quick test mode (no file creation) | `netcheck tcp` |
+| `-d, --dns <host>` | Resolve DNS hostname | `netcheck dns` |
+| `-p, --ping <host>` | Ping host | `netcheck ping` |
+| `-s, --status <url>` | Check HTTP/HTTPS status | `netcheck http` |
+| `--cert <host>` | Validate SSL certificate | `netcheck ssl` |
+| `--my-ip, -ip` | Show network interfaces | `netcheck interfaces` |
+| `--all` | Include down interfaces (with `--my-ip`) | `netcheck interfaces --all` |
+| `-t, --timeout <sec>` | Set connection timeout (default: 5) | `--timeout` |
+| `-j, --jobs <num>` | Max concurrent parallel jobs (default: 10) | `--jobs` |
+| `-f, --format <format>` | Output format: `text`, `json`, `csv`, `xml` | `--format` |
+| `-c, --combined` | Generate dated combined report | `--combined` |
+
+---
+
+## 🛡️ License
+
+Distributed under the **GNU General Public License v3 (GPL-3.0)**. See `LICENSE` for details.

@@ -1,62 +1,26 @@
 name: netcheck
-version: '1.2.0'
-summary: Network connectivity checker with DNS, ping, HTTP, and SSL validation
+version: '2.0.0'
+summary: Network diagnostics engine (DNS, ping, HTTP, TCP, SSL, interfaces)
 title: NetCheck - Network Connectivity Tester
-icon: snap/gui/icon.png
 license: GPL-3.0
 website: https://github.com/farman20ali/network_access_check
 source-code: https://github.com/farman20ali/network_access_check
 issues: https://github.com/farman20ali/network_access_check/issues
 contact: https://github.com/farman20ali/network_access_check/issues
 description: |
-  A powerful bash-based network connectivity testing tool that supports:
+  A powerful cross-platform network diagnostics and connectivity testing engine.
   
-  Core Testing Features:
-  - ICMP ping testing with statistics and URL support
-  - DNS lookup with multiple fallback methods (accepts URLs)
-  - TCP port connectivity testing with parallel processing
-  - HTTP/HTTPS status code checking with performance metrics
-  - SSL/TLS certificate validation with expiry warnings
+  Features:
+  - DNS lookup (A/AAAA records, cached, with strict timeouts)
+  - TCP connectivity checks (concurrent host/port scanning)
+  - HTTP/HTTPS status audits (latency, response size, redirects)
+  - SSL/TLS cert validation (subject, issuer, expiry warning)
+  - ICMP ping checks (packet loss and RTT stats)
+  - Network interface enumeration (wireless/hotspot active detection)
+  - Zero-dependency Model Context Protocol (MCP) server
   
-  Network Diagnostics (v1.2.0):
-  - Show network interfaces with IP addresses (--my-ip)
-  - Retry failed connections with configurable count and delay
-  - HTTP status codes with response time and content size
-  - SSL certificate expiry check with advance warnings
-  
-  Advanced Features:
-  - Parallel TCP connection testing (up to 256 concurrent jobs)
-  - Quick mode parallel processing for wide IP ranges
-  - Output file support for quick mode results (-o flag)
-  - IP range support (192.168.1.1-50)
-  - CIDR notation (10.0.0.0/24)
-  - Port ranges (8000-8100) and multiple ports (80,443,3306)
-  - CSV file input for bulk testing
-  - Multiple output formats (text, JSON, CSV, XML)
-  - Comprehensive input validation with helpful warnings
-  - Real-time progress tracking
-  - Combined reports with dated filenames
-  
-  Perfect for:
-  - System administrators monitoring infrastructure
-  - DevOps engineers validating deployments
-  - Network diagnostics and troubleshooting
-  - DNS resolution verification
-  - ICMP connectivity testing
-  - HTTP/HTTPS status monitoring
-  - SSL certificate expiry tracking
-  - Security auditing and port scanning
-  - Load balancer health checks
-  
-  IMPORTANT: For full functionality, run after installation:
+  IMPORTANT: For full functionality (ping and interface list), run after installation:
     sudo snap connect netcheck:network-observe
-  
-  This connection enables:
-  - ICMP ping tests (-p/--ping flag)
-  - Network interface information (--my-ip flag)
-  
-  Without this connection, features like TCP port tests, DNS lookup, HTTP
-  status checks, SSL certificate validation, and retry logic work normally.
 
 grade: stable
 confinement: strict
@@ -65,8 +29,6 @@ base: core22
 
 architectures:
   - build-on: amd64
-  - build-on: arm64
-  - build-on: armhf
 
 apps:
   netcheck:
@@ -78,33 +40,11 @@ apps:
       - home
     environment:
       LC_ALL: C.UTF-8
-      PATH: $SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$PATH
 
 parts:
   netcheck:
-    plugin: dump
+    plugin: python
     source: .
     source-type: local
-    organize:
-      check_ip.sh: bin/netcheck
-    stage:
-      - bin/netcheck
-      - README.md
-      - EXAMPLES.md
-      - LICENSE
-      - usr/bin/*
-      - usr/sbin/*
-      - lib/*
-      - usr/lib/*
     stage-packages:
-      - telnet
-      - netcat-openbsd
-      - coreutils
-      - grep
-      - sed
-      - dnsutils
       - iputils-ping
-      - curl
-      - openssl
-      - bc
-      - iproute2

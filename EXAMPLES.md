@@ -10,8 +10,8 @@ netcheck --version
 
 Output:
 ```
-Network Connectivity Checker (netcheck) version 1.2.0
-Copyright (c) 2025
+Network Connectivity Checker (netcheck) version 2.0.0
+Copyright (c) 2026
 License: GNU GPL v3
 ```
 
@@ -19,6 +19,59 @@ License: GNU GPL v3
 ```bash
 netcheck -h
 netcheck --help
+```
+
+---
+
+## 1.5. Subcommand Mode (v2.0.0)
+
+In addition to legacy flags, `netcheck` 2.0.0 provides direct, modular subcommands:
+
+### Check TCP Connectivity
+```bash
+netcheck tcp google.com 80,443
+netcheck tcp 192.168.1.1-10 22 -t 2 -j 20
+```
+
+### Check DNS Resolution
+```bash
+netcheck dns api.github.com
+```
+
+### Check HTTP Status
+```bash
+netcheck http https://google.com
+netcheck http localhost:8000/health -V
+```
+
+### Check SSL Certificate
+```bash
+netcheck ssl google.com
+netcheck ssl localhost:8443 -V
+```
+
+### Ping Host
+```bash
+netcheck ping 8.8.8.8
+```
+
+### Show Network Interfaces
+```bash
+netcheck interfaces
+netcheck interfaces --all
+```
+
+---
+
+## 1.8. Model Context Protocol (MCP) Mode (v2.0.0)
+
+Start the built-in MCP server for AI integration (e.g. Claude Desktop):
+```bash
+netcheck --mcp
+```
+Or run as a Python module:
+```bash
+python3 -m netcheck.mcp.server
 ```
 
 ---
