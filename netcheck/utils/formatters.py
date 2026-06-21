@@ -40,7 +40,63 @@ def get_colors(use_color: bool) -> Dict[str, str]:
     }
 
 def format_json(results: List[Dict[str, Any]]) -> str:
-    """Format results to structured JSON matching legacy keys."""
+    """Format results to structured JSON matching legacy or specialized formats."""
+    if results and len(results) == 1:
+        res = results[0]
+        meta = res.get("metadata", {})
+        # 1. Interfaces
+        if res.get("target") == "interfaces":
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "interfaces",
+                **meta
+            }, indent=2)
+        # 2. DNS
+        elif "resolved_host" in meta:
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "dns",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "latency_ms": res.get("latency_ms"),
+                **meta
+            }, indent=2)
+        # 3. HTTP
+        elif "status_code" in meta and "headers" in meta:
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "http",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "latency_ms": res.get("latency_ms"),
+                **meta
+            }, indent=2)
+        # 4. SSL
+        elif "valid_until" in meta:
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "ssl",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "latency_ms": res.get("latency_ms"),
+                **meta
+            }, indent=2)
+        # 5. Ping
+        elif "packets_sent" in meta:
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "ping",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "latency_ms": res.get("latency_ms"),
+                **meta
+            }, indent=2)
+
+    # Default legacy TCP connect check format
     all_success = all(r.get("success", False) for r in results) if results else True
     all_fail = all(not r.get("success", False) for r in results) if results else True
     
@@ -53,7 +109,6 @@ def format_json(results: List[Dict[str, Any]]) -> str:
             port = 0
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if r.get("success", False):
-            # For TCP checks, default method is netcat if not defined
             method = r.get("metadata", {}).get("method", "netcat")
             formatted_results.append({
                 "status": "success",
@@ -90,7 +145,98 @@ def format_json(results: List[Dict[str, Any]]) -> str:
     return json.dumps(data, indent=2)
 
 def format_csv(results: List[Dict[str, Any]]) -> str:
-    """Format results to CSV format matching legacy columns."""
+    """Format results to CSV format matching legacy or specialized headers."""
+    if results and len(results) == 1:
+        res = results[0]
+        meta = res.get("metadata", {})
+        # 1. Interfaces
+        if res.get("target") == "interfaces":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Interface", "IPv4", "IPv6", "Status", "Default_Gateway", "Public_IP"])
+            interfaces = meta.get("interfaces", {})
+            gw = meta.get("gateway_ip", "")
+            pub = meta.get("public_ip", "")
+            for name, iface in sorted(interfaces.items()):
+                writer.writerow([
+                    name,
+                    ", ".join(iface.get("ipv4", [])),
+                    ", ".join(iface.get("ipv6", [])),
+                    iface.get("status", ""),
+                    gw,
+                    pub
+                ])
+            return output.getvalue()
+        # 2. DNS
+        elif "resolved_host" in meta:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Resolved_Host", "IP", "Reverse_DNS", "Success", "Latency_MS", "Error"])
+            ips = meta.get("ips", [])
+            rev = meta.get("reverse_dns", "") or ""
+            success = "SUCCESS" if res.get("success", False) else "FAILED"
+            lat = res.get("latency_ms") if res.get("latency_ms") is not None else "N/A"
+            err = res.get("error", "") or ""
+            if ips:
+                for ip in ips:
+                    writer.writerow([res.get("target"), meta.get("resolved_host"), ip, rev, success, lat, err])
+            else:
+                writer.writerow([res.get("target"), meta.get("resolved_host"), "", rev, success, lat, err])
+            return output.getvalue()
+        # 3. HTTP
+        elif "status_code" in meta and "headers" in meta:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Status_Code", "Redirect_URL", "Size_Bytes", "Success", "Latency_MS", "Error"])
+            writer.writerow([
+                res.get("target"),
+                meta.get("status_code") if meta.get("status_code") is not None else "N/A",
+                meta.get("redirect_url") or "",
+                meta.get("size_bytes", 0),
+                "SUCCESS" if res.get("success", False) else "FAILED",
+                res.get("latency_ms") if res.get("latency_ms") is not None else "N/A",
+                res.get("error") or ""
+            ])
+            return output.getvalue()
+        # 4. SSL
+        elif "valid_until" in meta:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Subject_CN", "Issuer_O", "Valid_From", "Valid_Until", "Days_Until_Expiry", "Expired", "Success", "Latency_MS", "Error"])
+            writer.writerow([
+                res.get("target"),
+                meta.get("subject", {}).get("commonName", ""),
+                meta.get("issuer", {}).get("organizationName", ""),
+                meta.get("valid_from") or "",
+                meta.get("valid_until") or "",
+                meta.get("days_until_expiry") if meta.get("days_until_expiry") is not None else "N/A",
+                "True" if meta.get("expired", False) else "False",
+                "SUCCESS" if res.get("success", False) else "FAILED",
+                res.get("latency_ms") if res.get("latency_ms") is not None else "N/A",
+                res.get("error") or ""
+            ])
+            return output.getvalue()
+        # 5. Ping
+        elif "packets_sent" in meta:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Host", "Packets_Sent", "Packets_Received", "Packet_Loss_Pct", "Min_RTT_MS", "Avg_RTT_MS", "Max_RTT_MS", "Success", "Latency_MS", "Error"])
+            writer.writerow([
+                res.get("target"),
+                meta.get("host", ""),
+                meta.get("packets_sent", 0),
+                meta.get("packets_received", 0),
+                meta.get("packet_loss_pct", 0.0),
+                meta.get("min_rtt_ms") if meta.get("min_rtt_ms") is not None else "N/A",
+                meta.get("avg_rtt_ms") if meta.get("avg_rtt_ms") is not None else "N/A",
+                meta.get("max_rtt_ms") if meta.get("max_rtt_ms") is not None else "N/A",
+                "SUCCESS" if res.get("success", False) else "FAILED",
+                res.get("latency_ms") if res.get("latency_ms") is not None else "N/A",
+                res.get("error") or ""
+            ])
+            return output.getvalue()
+
+    # Default legacy TCP connect check format
     output = io.StringIO()
     writer = csv.writer(output)
     
@@ -125,7 +271,99 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
     return output.getvalue()
 
 def format_xml(results: List[Dict[str, Any]]) -> str:
-    """Format results to XML format matching legacy structure."""
+    """Format results to XML format matching legacy or specialized structures."""
+    if results and len(results) == 1:
+        res = results[0]
+        meta = res.get("metadata", {})
+        # 1. Interfaces
+        if res.get("target") == "interfaces":
+            root = ET.Element("network_interfaces", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            ET.SubElement(root, "primary_ip").text = meta.get("primary_ip", "")
+            ET.SubElement(root, "gateway_ip").text = meta.get("gateway_ip", "")
+            ET.SubElement(root, "gateway_dev").text = meta.get("gateway_dev", "")
+            ET.SubElement(root, "public_ip").text = meta.get("public_ip", "")
+            
+            ifaces_elem = ET.SubElement(root, "interfaces")
+            for name, iface in sorted(meta.get("interfaces", {}).items()):
+                iface_elem = ET.SubElement(ifaces_elem, "interface", name=name, status=iface.get("status", ""))
+                ipv4_elem = ET.SubElement(iface_elem, "ipv4_addresses")
+                for ip in iface.get("ipv4", []):
+                    ET.SubElement(ipv4_elem, "ip").text = ip
+                ipv6_elem = ET.SubElement(iface_elem, "ipv6_addresses")
+                for ip in iface.get("ipv6", []):
+                    ET.SubElement(ipv6_elem, "ip").text = ip
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 2. DNS
+        elif "resolved_host" in meta:
+            root = ET.Element("dns_lookup", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), target=res.get("target"), success=str(res.get("success", False)).lower())
+            ET.SubElement(root, "resolved_host").text = meta.get("resolved_host", "")
+            ips_elem = ET.SubElement(root, "ip_addresses")
+            for ip in meta.get("ips", []):
+                ET.SubElement(ips_elem, "ip").text = ip
+            aliases_elem = ET.SubElement(root, "aliases")
+            for alias in meta.get("aliases", []):
+                ET.SubElement(aliases_elem, "alias").text = alias
+            ET.SubElement(root, "reverse_dns").text = meta.get("reverse_dns", "") or ""
+            if res.get("latency_ms") is not None:
+                ET.SubElement(root, "latency_ms").text = str(res.get("latency_ms"))
+            if res.get("error"):
+                ET.SubElement(root, "error").text = res.get("error")
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 3. HTTP
+        elif "status_code" in meta and "headers" in meta:
+            root = ET.Element("http_check", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), target=res.get("target"), success=str(res.get("success", False)).lower())
+            ET.SubElement(root, "status_code").text = str(meta.get("status_code") if meta.get("status_code") is not None else "")
+            ET.SubElement(root, "redirect_url").text = meta.get("redirect_url") or ""
+            ET.SubElement(root, "size_bytes").text = str(meta.get("size_bytes", 0))
+            if res.get("latency_ms") is not None:
+                ET.SubElement(root, "latency_ms").text = str(res.get("latency_ms"))
+            if res.get("error"):
+                ET.SubElement(root, "error").text = res.get("error")
+                
+            headers_elem = ET.SubElement(root, "headers")
+            for k, v in sorted(meta.get("headers", {}).items()):
+                ET.SubElement(headers_elem, "header", name=k).text = str(v)
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 4. SSL
+        elif "valid_until" in meta:
+            root = ET.Element("ssl_check", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), target=res.get("target"), success=str(res.get("success", False)).lower())
+            ET.SubElement(root, "subject_cn").text = meta.get("subject", {}).get("commonName", "")
+            ET.SubElement(root, "issuer_o").text = meta.get("issuer", {}).get("organizationName", "")
+            ET.SubElement(root, "valid_from").text = meta.get("valid_from") or ""
+            ET.SubElement(root, "valid_until").text = meta.get("valid_until") or ""
+            ET.SubElement(root, "days_until_expiry").text = str(meta.get("days_until_expiry") if meta.get("days_until_expiry") is not None else "")
+            ET.SubElement(root, "expired").text = str(meta.get("expired", False)).lower()
+            if res.get("latency_ms") is not None:
+                ET.SubElement(root, "latency_ms").text = str(res.get("latency_ms"))
+            if res.get("error"):
+                ET.SubElement(root, "error").text = res.get("error")
+                
+            sans_elem = ET.SubElement(root, "sans")
+            for san in meta.get("sans", []):
+                ET.SubElement(sans_elem, "san").text = san
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 5. Ping
+        elif "packets_sent" in meta:
+            root = ET.Element("ping_check", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), target=res.get("target"), success=str(res.get("success", False)).lower())
+            ET.SubElement(root, "host").text = meta.get("host", "")
+            ET.SubElement(root, "packets_sent").text = str(meta.get("packets_sent", 0))
+            ET.SubElement(root, "packets_received").text = str(meta.get("packets_received", 0))
+            ET.SubElement(root, "packet_loss_pct").text = str(meta.get("packet_loss_pct", 0.0))
+            ET.SubElement(root, "min_rtt_ms").text = str(meta.get("min_rtt_ms") if meta.get("min_rtt_ms") is not None else "")
+            ET.SubElement(root, "avg_rtt_ms").text = str(meta.get("avg_rtt_ms") if meta.get("avg_rtt_ms") is not None else "")
+            ET.SubElement(root, "max_rtt_ms").text = str(meta.get("max_rtt_ms") if meta.get("max_rtt_ms") is not None else "")
+            if res.get("latency_ms") is not None:
+                ET.SubElement(root, "latency_ms").text = str(res.get("latency_ms"))
+            if res.get("error"):
+                ET.SubElement(root, "error").text = res.get("error")
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+
+    # Default legacy TCP connect check format
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     root = ET.Element("connectivity_check", date=timestamp)
     

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.2.0"
+VERSION=$(PYTHONPATH=. python3 -c "import netcheck; print(netcheck.__version__)")
 PACKAGE_NAME="netcheck"
 BUILD_DIR="${PACKAGE_NAME}_${VERSION}"
 
@@ -23,25 +23,32 @@ fi
 # Create directory structure
 echo "Creating package structure..."
 mkdir -p "${BUILD_DIR}/DEBIAN"
-mkdir -p "${BUILD_DIR}/usr/local/bin"
+mkdir -p "${BUILD_DIR}/usr/bin"
 mkdir -p "${BUILD_DIR}/usr/share/man/man1"
 mkdir -p "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}"
-mkdir -p "${BUILD_DIR}/etc/bash_completion.d"
+mkdir -p "${BUILD_DIR}/usr/share/bash-completion/completions"
 
-# Copy main script
-echo "Copying main script..."
-if [ ! -f "check_ip.sh" ]; then
-    echo "Error: check_ip.sh not found!"
-    exit 1
-fi
-cp check_ip.sh "${BUILD_DIR}/usr/local/bin/netcheck"
-chmod 755 "${BUILD_DIR}/usr/local/bin/netcheck"
+# Copy main script (entrypoint) and packaging library
+echo "Copying main script (entrypoint) and packaging library..."
+mkdir -p "${BUILD_DIR}/usr/bin"
+cat << 'ENTRYEOF' > "${BUILD_DIR}/usr/bin/netcheck"
+#!/usr/bin/env python3
+import sys
+from netcheck.cli import main
+if __name__ == '__main__':
+    sys.exit(main())
+ENTRYEOF
+chmod 755 "${BUILD_DIR}/usr/bin/netcheck"
+
+mkdir -p "${BUILD_DIR}/usr/lib/python3/dist-packages"
+cp -r netcheck "${BUILD_DIR}/usr/lib/python3/dist-packages/"
+find "${BUILD_DIR}/usr/lib/python3/dist-packages/netcheck" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Copy documentation
 echo "Copying documentation..."
-for doc in README.md EXAMPLES.md INSTALL.md; do
+for doc in README.md EXAMPLES.md docs/examples.md docs/guides/summary.md docs/guides/publishing.md; do
     if [ -f "$doc" ]; then
-        cp "$doc" "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}/"
+        cp "$doc" "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}/" 2>/dev/null || true
     fi
 done
 
@@ -217,12 +224,14 @@ GNU GPL v3 - https://www.gnu.org/licenses/gpl-3.0.html
 https://github.com/farman20ali/network_access_check/issues
 MANEOF
 
-gzip -9c /tmp/netcheck.1 > "${BUILD_DIR}/usr/share/man/man1/netcheck.1.gz"
+# Use SOURCE_DATE_EPOCH to avoid timestamped gzip warning
+export SOURCE_DATE_EPOCH=$(date -d "$(grep -m1 '^Version:' <<< "" || echo '2026-01-01')" +%s 2>/dev/null || echo 1735689600)
+gzip -9cn /tmp/netcheck.1 > "${BUILD_DIR}/usr/share/man/man1/netcheck.1.gz"
 rm /tmp/netcheck.1
 
-# Create bash completion
+# Create bash completion (modern path: usr/share/bash-completion/completions/)
 echo "Creating bash completion..."
-cat << 'COMPEOF' > "${BUILD_DIR}/etc/bash_completion.d/netcheck"
+cat << 'COMPEOF' > "${BUILD_DIR}/usr/share/bash-completion/completions/netcheck"
 # Bash completion for netcheck
 _netcheck() {
     local cur prev opts
@@ -275,7 +284,40 @@ _netcheck() {
 }
 complete -F _netcheck netcheck
 COMPEOF
-chmod 644 "${BUILD_DIR}/etc/bash_completion.d/netcheck"
+chmod 644 "${BUILD_DIR}/usr/share/bash-completion/completions/netcheck"
+
+# Create required Debian changelog.gz
+echo "Creating changelog..."
+cat << CHANGEEOF > /tmp/netcheck.changelog
+netcheck (${VERSION}) stable; urgency=medium
+
+  * v${VERSION} release - cross-platform Python 3 engine.
+  * DNS, HTTP, SSL, Ping, TCP, and Interfaces diagnostic modules.
+  * MCP server support for AI editor integrations.
+  * Multiple output formats: text, JSON, CSV, XML.
+
+ -- Network Tools <admin@example.com>  $(date -R)
+CHANGEEOF
+gzip -9cn /tmp/netcheck.changelog > "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}/changelog.gz"
+rm /tmp/netcheck.changelog
+
+# Create required Debian copyright file
+echo "Creating copyright..."
+cat << 'COPYEOF' > "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}/copyright"
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: netcheck
+Upstream-Contact: https://github.com/farman20ali/network_access_check
+Source: https://github.com/farman20ali/network_access_check
+
+Files: *
+Copyright: 2024-2026 Network Tools <admin@example.com>
+License: GPL-3
+
+License: GPL-3
+ On Debian systems, the full text of the GNU General Public
+ License version 3 can be found in the file
+ '/usr/share/common-licenses/GPL-3'.
+COPYEOF
 
 # Create control file
 echo "Creating control file..."
@@ -285,10 +327,10 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: all
-Depends: bash (>= 4.0), telnet | netcat-openbsd | netcat-traditional, curl, openssl, bc, iproute2 | net-tools
+Depends: python3 (>= 3.8), python3-cryptography, iproute2 | net-tools, iputils-ping
 Maintainer: Network Tools <admin@example.com>
 Description: Network connectivity checker with advanced features
- A powerful bash-based network connectivity testing tool that supports:
+ A powerful python-based network connectivity testing tool that supports:
   - ICMP ping testing with statistics and URL support
   - DNS lookup with multiple fallback methods (accepts URLs)
   - HTTP/HTTPS status checking with performance metrics
@@ -310,6 +352,10 @@ Description: Network connectivity checker with advanced features
 Homepage: https://github.com/yourusername/netcheck
 CTRLEOF
 
+# Create conffiles declaration (only for /etc/ files; /usr/ must NOT be listed)
+# bash-completion is now in /usr/share/ so no conffiles needed
+# (leaving file empty or omitting is fine; omit entirely)
+
 # Create postinst script
 echo "Creating post-installation script..."
 cat << 'POSTEOF' > "${BUILD_DIR}/DEBIAN/postinst"
@@ -321,22 +367,7 @@ if command -v mandb > /dev/null 2>&1; then
     mandb -q 2>/dev/null || true
 fi
 
-# Check for required dependencies
-if ! command -v telnet > /dev/null 2>&1 && ! command -v nc > /dev/null 2>&1; then
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "⚠ WARNING: Missing Dependencies"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "Neither telnet nor netcat (nc) is installed."
-    echo "Please install one of them:"
-    echo ""
-    echo "  sudo apt install telnet"
-    echo "  sudo apt install netcat-openbsd"
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-fi
+# Dependencies are managed by python3 stdlib and system depends.
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -364,22 +395,37 @@ cat << 'PREEOF' > "${BUILD_DIR}/DEBIAN/prerm"
 #!/bin/bash
 set -e
 
-# Clean up any temporary files
-rm -f /tmp/netcheck-*.tmp 2>/dev/null || true
+# Clean up any cached runtime files (no /tmp usage)
+find /var/cache/netcheck -name "*.tmp" -delete 2>/dev/null || true
 
 exit 0
 PREEOF
 chmod 755 "${BUILD_DIR}/DEBIAN/prerm"
+
+# Fix permissions for standard Debian guidelines
+find "${BUILD_DIR}" -type d -exec chmod 755 {} +
+find "${BUILD_DIR}" -type f -exec chmod 644 {} +
+chmod 755 "${BUILD_DIR}/DEBIAN/postinst"
+chmod 755 "${BUILD_DIR}/DEBIAN/prerm"
+chmod 755 "${BUILD_DIR}/usr/bin/netcheck"
 
 # Calculate installed size
 echo "Calculating package size..."
 INSTALLED_SIZE=$(du -sk "${BUILD_DIR}" | cut -f1)
 echo "Installed-Size: ${INSTALLED_SIZE}" >> "${BUILD_DIR}/DEBIAN/control"
 
+# Fix ownership: all files must be owned by root:root in a proper deb package
+# Use fakeroot if available (it fakes root ownership without requiring sudo)
+if command -v fakeroot > /dev/null 2>&1; then
+    BUILD_CMD="fakeroot dpkg-deb --build ${BUILD_DIR}"
+else
+    BUILD_CMD="dpkg-deb --build ${BUILD_DIR}"
+fi
+
 # Build the package
 echo ""
 echo "Building DEB package..."
-dpkg-deb --build "${BUILD_DIR}"
+eval ${BUILD_CMD}
 
 # Verify package
 echo ""

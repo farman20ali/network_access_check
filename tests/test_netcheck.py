@@ -174,5 +174,190 @@ def json_loads_or_none(s):
     except Exception:
         return None
 
+class TestFormatterOutputs(unittest.TestCase):
+    def setUp(self):
+        # Sample metadata representing the 5 different checks
+        self.interfaces_result = {
+            "target": "interfaces",
+            "status": "SUCCESS",
+            "success": True,
+            "metadata": {
+                "primary_ip": "192.168.1.5",
+                "gateway_ip": "192.168.1.1",
+                "gateway_dev": "eth0",
+                "public_ip": "8.8.8.8",
+                "all_interfaces_shown": False,
+                "interfaces": {
+                    "eth0": {
+                        "ipv4": ["192.168.1.5"],
+                        "ipv6": ["fe80::1"],
+                        "status": "UP"
+                    }
+                }
+            }
+        }
+        
+        self.dns_result = {
+            "target": "google.com",
+            "status": "SUCCESS",
+            "success": True,
+            "latency_ms": 12.5,
+            "metadata": {
+                "resolved_host": "google.com",
+                "ips": ["142.250.190.46"],
+                "aliases": ["www.google.com"],
+                "reverse_dns": "dns.google"
+            }
+        }
+        
+        self.http_result = {
+            "target": "http://example.com",
+            "status": "SUCCESS",
+            "success": True,
+            "latency_ms": 45.2,
+            "metadata": {
+                "status_code": 200,
+                "redirect_url": None,
+                "size_bytes": 1256,
+                "headers": {"content-type": "text/html"}
+            }
+        }
+        
+        self.ssl_result = {
+            "target": "google.com",
+            "status": "SUCCESS",
+            "success": True,
+            "latency_ms": 110.0,
+            "metadata": {
+                "subject": {"commonName": "google.com"},
+                "issuer": {"organizationName": "Google Trust Services"},
+                "valid_from": "2026-01-01",
+                "valid_until": "2026-12-31",
+                "days_until_expiry": 200,
+                "expired": False,
+                "sans": ["google.com", "www.google.com"]
+            }
+        }
+        
+        self.ping_result = {
+            "target": "8.8.8.8",
+            "status": "SUCCESS",
+            "success": True,
+            "latency_ms": 15.1,
+            "metadata": {
+                "host": "8.8.8.8",
+                "packets_sent": 4,
+                "packets_received": 4,
+                "packet_loss_pct": 0.0,
+                "min_rtt_ms": 14.0,
+                "avg_rtt_ms": 15.0,
+                "max_rtt_ms": 16.0
+            }
+        }
+
+    def test_json_formatting(self):
+        from netcheck.utils.formatters import format_json
+        import json
+        
+        # Test Interfaces JSON
+        res_json = json.loads(format_json([self.interfaces_result]))
+        self.assertEqual(res_json["type"], "interfaces")
+        self.assertEqual(res_json["primary_ip"], "192.168.1.5")
+        
+        # Test DNS JSON
+        res_json = json.loads(format_json([self.dns_result]))
+        self.assertEqual(res_json["type"], "dns")
+        self.assertEqual(res_json["target"], "google.com")
+        self.assertEqual(res_json["resolved_host"], "google.com")
+        
+        # Test HTTP JSON
+        res_json = json.loads(format_json([self.http_result]))
+        self.assertEqual(res_json["type"], "http")
+        self.assertEqual(res_json["status_code"], 200)
+        
+        # Test SSL JSON
+        res_json = json.loads(format_json([self.ssl_result]))
+        self.assertEqual(res_json["type"], "ssl")
+        self.assertEqual(res_json["days_until_expiry"], 200)
+        
+        # Test Ping JSON
+        res_json = json.loads(format_json([self.ping_result]))
+        self.assertEqual(res_json["type"], "ping")
+        self.assertEqual(res_json["packet_loss_pct"], 0.0)
+
+    def test_csv_formatting(self):
+        from netcheck.utils.formatters import format_csv
+        import csv
+        
+        # Test Interfaces CSV
+        csv_out = format_csv([self.interfaces_result])
+        reader = csv.reader(io.StringIO(csv_out))
+        rows = list(reader)
+        self.assertEqual(rows[0], ["Interface", "IPv4", "IPv6", "Status", "Default_Gateway", "Public_IP"])
+        self.assertEqual(rows[1][0], "eth0")
+        
+        # Test DNS CSV
+        csv_out = format_csv([self.dns_result])
+        reader = csv.reader(io.StringIO(csv_out))
+        rows = list(reader)
+        self.assertEqual(rows[0], ["Target", "Resolved_Host", "IP", "Reverse_DNS", "Success", "Latency_MS", "Error"])
+        self.assertEqual(rows[1][1], "google.com")
+        
+        # Test HTTP CSV
+        csv_out = format_csv([self.http_result])
+        reader = csv.reader(io.StringIO(csv_out))
+        rows = list(reader)
+        self.assertEqual(rows[0], ["Target", "Status_Code", "Redirect_URL", "Size_Bytes", "Success", "Latency_MS", "Error"])
+        self.assertEqual(rows[1][1], "200")
+        
+        # Test SSL CSV
+        csv_out = format_csv([self.ssl_result])
+        reader = csv.reader(io.StringIO(csv_out))
+        rows = list(reader)
+        self.assertEqual(rows[0], ["Target", "Subject_CN", "Issuer_O", "Valid_From", "Valid_Until", "Days_Until_Expiry", "Expired", "Success", "Latency_MS", "Error"])
+        self.assertEqual(rows[1][1], "google.com")
+        self.assertEqual(rows[1][2], "Google Trust Services")
+        
+        # Test Ping CSV
+        csv_out = format_csv([self.ping_result])
+        reader = csv.reader(io.StringIO(csv_out))
+        rows = list(reader)
+        self.assertEqual(rows[0], ["Target", "Host", "Packets_Sent", "Packets_Received", "Packet_Loss_Pct", "Min_RTT_MS", "Avg_RTT_MS", "Max_RTT_MS", "Success", "Latency_MS", "Error"])
+        self.assertEqual(rows[1][4], "0.0")
+
+    def test_xml_formatting(self):
+        from netcheck.utils.formatters import format_xml
+        import xml.etree.ElementTree as ET
+        
+        # Test Interfaces XML
+        xml_out = format_xml([self.interfaces_result])
+        root = ET.fromstring(xml_out)
+        self.assertEqual(root.tag, "network_interfaces")
+        self.assertEqual(root.find("primary_ip").text, "192.168.1.5")
+        
+        # Test DNS XML
+        xml_out = format_xml([self.dns_result])
+        root = ET.fromstring(xml_out)
+        self.assertEqual(root.tag, "dns_lookup")
+        self.assertEqual(root.find("resolved_host").text, "google.com")
+        
+        # Test HTTP XML
+        xml_out = format_xml([self.http_result])
+        root = ET.fromstring(xml_out)
+        self.assertEqual(root.tag, "http_check")
+        self.assertEqual(root.find("status_code").text, "200")
+        
+        # Test SSL XML
+        xml_out = format_xml([self.ssl_result])
+        root = ET.fromstring(xml_out)
+        self.assertEqual(root.tag, "ssl_check")
+        self.assertEqual(root.find("subject_cn").text, "google.com")
+        
+        # Test Ping XML
+        xml_out = format_xml([self.ping_result])
+        root = ET.fromstring(xml_out)
+        self.assertEqual(root.tag, "ping_check")
+        self.assertEqual(root.find("packet_loss_pct").text, "0.0")
+
 if __name__ == "__main__":
     unittest.main()

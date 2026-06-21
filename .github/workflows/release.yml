@@ -1,0 +1,194 @@
+name: Release Packaging and Deployment
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux Packages (DEB, RPM)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y alien dpkg-dev
+
+      - name: Install PyProject dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # We don't have any strict dependencies in pyproject.toml, but we can verify it installs
+          pip install .
+
+      - name: Build Debian Package
+        run: |
+          python3 build_packages.py --deb
+
+      - name: Build RPM Package
+        run: |
+          python3 build_packages.py --rpm
+
+      - name: Upload Debian Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: dist/deb/netcheck_*.deb
+
+      - name: Upload RPM Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package
+          path: dist/rpm/netcheck*.rpm
+
+  build-snap:
+    name: Build Snap Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Snap
+        uses: snapcore/action-build@v1
+        id: snapcraft
+
+      - name: Upload Snap Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snap-package
+          path: ${{ steps.snapcraft.outputs.snap }}
+
+  build-windows:
+    name: Build Windows Binary
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Build Windows Binary
+        run: |
+          python build_packages.py --win
+
+      - name: Upload Windows Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: dist/win/netcheck.exe
+
+  build-mac:
+    name: Build macOS Binary
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Build macOS Binary
+        run: |
+          python build_packages.py --mac
+
+      - name: Upload macOS Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-binary
+          path: dist/mac/netcheck
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-linux, build-snap, build-windows, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download DEB Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-package
+          path: release-artifacts/
+
+      - name: Download RPM Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpm-package
+          path: release-artifacts/
+
+      - name: Download Snap Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: snap-package
+          path: release-artifacts/
+
+      - name: Download Windows Binary Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-binary
+          path: release-artifacts/
+
+      - name: Download macOS Binary Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-binary
+          path: release-artifacts/
+
+      - name: Parse Release Notes
+        id: release_notes
+        run: |
+          # Strip 'v' prefix if present to match filename convention (e.g. v2.0.0 -> 2.0.0)
+          TAG_NAME="${{ github.ref_name }}"
+          VERSION="${TAG_NAME#v}"
+          NOTES_FILE="docs/releases/RELEASE_NOTES_V${VERSION}.md"
+          
+          if [ -f "$NOTES_FILE" ]; then
+            echo "Release notes file found: $NOTES_FILE"
+            # output the content to a temp file or output variable
+            # Using GITHUB_OUTPUT for multiline strings
+            echo "notes<<EOF" >> $GITHUB_OUTPUT
+            cat "$NOTES_FILE" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "Release notes file NOT found: $NOTES_FILE"
+            echo "notes=No release notes provided for this version." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: NetCheck ${{ github.ref_name }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          draft: false
+          prerelease: false
+          files: |
+            release-artifacts/*
