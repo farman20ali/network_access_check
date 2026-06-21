@@ -4,18 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcheckx"
-version = "2.1.0.1"
+version = "2.1.0.2"
 description = "Network connectivity checker with DNS, ping, HTTP, and SSL validation. (Published as netcheckx on PyPI to avoid naming conflict with legacy netcheck package)"
 readme = "README.md"
 requires-python = ">=3.8"
-license = "GPL-3.0-only"
+license = { text = "GPL-3.0-only" }
 authors = [
-    { name = "Network Tools Team", email = "admin@example.com" }
+    { name = "Alien Hub", email = "alienhub.dev@gmail.com" }
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
     "Topic :: System :: Networking :: Monitoring",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
 ]
 dependencies = []
 
