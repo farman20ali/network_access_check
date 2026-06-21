@@ -544,8 +544,7 @@ def build_choco_package(version: str) -> None:
     
     if uninstall_template.exists():
         shutil.copy2(uninstall_template, tools_dir / "chocolateyUninstall.ps1")
-
-    run(["choco", "pack", str(nuspec_path), "--outputdirectory", "dist/choco"], "Chocolatey Packager", cwd=choco_dir)
+    run(["choco", "pack", str(nuspec_path), "--outputdirectory", "."],"Chocolatey Packager", cwd=choco_dir)
     print(f"✅  Chocolatey package built at dist/choco/netcheck.{version}.nupkg")
 
 
