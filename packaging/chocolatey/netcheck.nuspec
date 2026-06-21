@@ -3,14 +3,23 @@
   <metadata>
     <id>netcheck</id>
     <version>{version}</version>
-    <title>NetCheck</title>
+    <title>NetCheck - Network Intelligence CLI</title>
     <authors>Farman Ali</authors>
-    <owners>Farman Ali</owners>
+    <owners>alienhub</owners>
+
     <projectUrl>https://github.com/farman20ali/network_access_check</projectUrl>
+    <projectSourceUrl>https://github.com/farman20ali/network_access_check/tree/main/netcheck</projectSourceUrl>
+    <packageSourceUrl>https://github.com/farman20ali/network_access_check/tree/main/packaging/chocolatey</packageSourceUrl>
+    <docsUrl>https://github.com/farman20ali/network_access_check/blob/main/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/farman20ali/network_access_check/issues</bugTrackerUrl>
+
     <licenseUrl>https://github.com/farman20ali/network_access_check/blob/main/LICENSE</licenseUrl>
-    <iconUrl>https://raw.githubusercontent.com/farman20ali/network_access_check/feature/assets/icons/icon.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>A premium, cross-platform network intelligence engine and CLI rewritten in pure Python 3.
+
+    <iconUrl>https://raw.githubusercontent.com/farman20ali/network_access_check/main/assets/icons/icon.png</iconUrl>
+
+    <summary>Cross-platform network diagnostics engine — DNS, TCP, HTTP, SSL, ping, MCP</summary>
+    <description>A cross-platform network intelligence engine and CLI written in pure Python 3.
 
 Supports:
 - DNS lookup (A/AAAA, cached, strict timeouts)
@@ -21,13 +30,16 @@ Supports:
 - Network interface enumeration with public IP
 - Structured output: text, JSON, CSV, XML
 - Model Context Protocol (MCP) server for AI assistants
-- Lenient target parsing: URLs, IP ranges, CIDR, port ranges, CSV files</description>
-    <summary>Cross-platform network diagnostics engine — DNS, TCP, HTTP, SSL, ping, MCP</summary>
-    <tags>netcheck network ping dns ssl http tcp mcp diagnostic cli tool cross-platform</tags>
-    <releaseNotes>https://github.com/farman20ali/network_access_check/blob/feature/CHANGELOG.md</releaseNotes>
+- Lenient target parsing: URLs, IP ranges, CIDR, port ranges, CSV files
+
+Run `netcheck mcp` to expose network tools to MCP-compatible clients (VS Code Copilot, Cursor, Claude Desktop).
+
+The Windows installer is downloaded from the official GitHub release during installation.</description>
+
+    <releaseNotes>https://github.com/farman20ali/network_access_check/releases/tag/v{version}</releaseNotes>
+    <tags>netcheck network ping dns ssl http tcp mcp diagnostic cli tool cross-platform python devops</tags>
   </metadata>
   <files>
-    <!-- Only include the install/uninstall scripts, not embedded binaries -->
     <file src="tools\chocolateyInstall.ps1" target="tools" />
     <file src="tools\chocolateyUninstall.ps1" target="tools" />
   </files>
