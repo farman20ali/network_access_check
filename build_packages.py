@@ -414,6 +414,32 @@ def _pyinstaller_build(name: str, out_subdir: str, exe_name: str,
 
 def build_win_installer(version: str) -> None:
     print("\n─── Building Windows NSIS Setup Installer ───")
+
+    # Configure UTF-8 encoding for standard streams on Windows to avoid UnicodeEncodeError
+    if sys.platform == "win32":
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                try:
+                    stream.reconfigure(encoding="utf-8")
+                except Exception:
+                    pass
+
+        # Dynamic path enhancement for Windows build tools
+        extra_paths = [
+            r"C:\Program Files (x86)\NSIS",
+            r"C:\Program Files\NSIS",
+            r"C:\ProgramData\chocolatey\bin",
+        ]
+        path_env = os.environ.get("PATH", "")
+        paths = [p.strip() for p in path_env.split(os.pathsep) if p.strip()]
+        added = False
+        for p in extra_paths:
+            if os.path.exists(p) and p not in paths:
+                paths.append(p)
+                added = True
+        if added:
+            os.environ["PATH"] = os.pathsep.join(paths)
+
     if not tool_ok("makensis"):
         print("⚠️   makensis not found. Skipping Windows Installer build.")
         return
