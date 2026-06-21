@@ -36,6 +36,25 @@ jobs:
         run: |
           python build_packages.py --pypi
 
+      - name: Publish to PyPI
+        if: ${{ secrets.PYPI_API_TOKEN != '' }}
+        run: |
+          pip install twine
+          twine upload dist/*.whl dist/*.tar.gz --non-interactive
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Skip PyPI Publish (No Secret)
+        if: ${{ secrets.PYPI_API_TOKEN == '' }}
+        run: |
+          echo "⚠️  PYPI_API_TOKEN secret not configured."
+          echo "To enable PyPI publishing:"
+          echo "  1. Go to Settings → Secrets and variables → Actions"
+          echo "  2. Click 'New repository secret'"
+          echo "  3. Name: PYPI_API_TOKEN"
+          echo "  4. Value: Your PyPI API token from https://pypi.org/manage/account/tokens/"
+
       - name: Build Linux Binary
         run: |
           python build_packages.py --linux

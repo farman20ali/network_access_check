@@ -110,7 +110,7 @@ def publish_pypi(test: bool = False) -> None:
         sys.exit("❌  twine not found.\n  Install: pip install twine")
 
     # Collect artefacts
-    artefacts = list(DIST_DIR.glob("netcheck-*.whl")) + list(DIST_DIR.glob("netcheck-*.tar.gz"))
+    artefacts = list(DIST_DIR.glob("netcheckx-*.whl")) + list(DIST_DIR.glob("netcheckx-*.tar.gz"))
     if not artefacts:
         sys.exit(
             "❌  No wheel / sdist found in dist/.\n"
@@ -127,7 +127,7 @@ def publish_pypi(test: bool = False) -> None:
     cmd += [str(a) for a in sorted(artefacts)]
 
     _run(cmd, f"twine upload → {'TestPyPI' if test else 'PyPI'}")
-    store_url = "https://test.pypi.org/project/netcheck/" if test else "https://pypi.org/project/netcheck/"
+    store_url = "https://test.pypi.org/project/netcheckx/" if test else "https://pypi.org/project/netcheckx/"
     print(f"\n🔗  View at: {store_url}")
 
 

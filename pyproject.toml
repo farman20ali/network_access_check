@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "netcheck"
+name = "netcheckx"
 version = "2.1.0"
-description = "Network connectivity checker with DNS, ping, HTTP, and SSL validation"
+description = "Network connectivity checker with DNS, ping, HTTP, and SSL validation. (Published as netcheckx on PyPI to avoid naming conflict with legacy netcheck package)"
 readme = "README.md"
 requires-python = ">=3.8"
 license = "GPL-3.0-only"
@@ -29,6 +29,7 @@ dev = [
 
 [project.scripts]
 netcheck = "netcheck.cli:main"
+netcheckx = "netcheck.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -26,36 +26,47 @@ A premium, cross-platform, production-grade **Network Intelligence Engine & CLI*
 
 ## 📦 Installation
 
-### Option 1: `pip` (recommended)
+### Option 1: PyPI (recommended — easiest)
+```bash
+pip install netcheckx
+```
+> **Note:** Package name is `netcheckx` (to avoid PyPI conflict), but you can use either command:
+```bash
+netcheck --help          # Works
+netcheckx --help         # Also works (alias)
+```
+> ⚠️ **Important:** Only install `netcheckx` OR `netcheck` from PyPI, not both (they're the same package with different names). Use `netcheckx` to get the latest version with full PyPI support.
+
+### Option 2: Local `pip` (development)
 ```bash
 pip install .
 # or system-wide:
 sudo pip install .
 ```
 
-### Option 2: Snap Store (Linux)
+### Option 3: Snap Store (Linux)
 ```bash
 sudo snap install netcheck
 sudo snap connect netcheck:network-observe   # enables ping & interfaces
 ```
 
-### Option 3: Debian package (`.deb`)
+### Option 4: Debian package (`.deb`)
 ```bash
 sudo dpkg -i netcheck_2.0.0_amd64.deb
 ```
 
-### Option 4: Chocolatey (Windows)
+### Option 5: Chocolatey (Windows)
 ```powershell
 choco install netcheck
 ```
 
-### Option 5: macOS `.pkg`
+### Option 6: macOS `.pkg`
 Double-click the downloaded `.pkg` file, or:
 ```bash
 sudo installer -pkg netcheck-2.0.0.pkg -target /
 ```
 
-### Option 6: Developer / local run (no install)
+### Option 7: Developer / local run (no install)
 ```bash
 # 1. Clone the repo
 git clone https://github.com/farman20ali/network_access_check.git
