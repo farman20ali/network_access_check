@@ -23,6 +23,7 @@ Environment variables (optional, avoids interactive prompts)
 
 import argparse
 import os
+import platform
 import subprocess
 import sys
 
@@ -33,6 +34,13 @@ try:
 except (AttributeError, TypeError):
     pass
 from pathlib import Path
+
+# ── Paths ──────────────────────────────────────────────────────────────────────
+REPO_ROOT = Path(__file__).parent.resolve()
+DIST_DIR  = REPO_ROOT / "dist"
+
+# ── Python executable (platform-aware) ───────────────────────────────────────
+PYTHON_CMD = "python" if platform.system().lower() == "windows" else "python3"
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 REPO_ROOT = Path(__file__).parent.resolve()
@@ -106,7 +114,7 @@ def publish_pypi(test: bool = False) -> None:
     if not artefacts:
         sys.exit(
             "❌  No wheel / sdist found in dist/.\n"
-            "  Run first:  python3 build_packages.py --pypi"
+            f"  Run first:  {PYTHON_CMD} build_packages.py --pypi"
         )
 
     print("  Artefacts to upload:")
@@ -139,7 +147,7 @@ def publish_snap(channel: str = "stable") -> None:
     if snap_file is None:
         sys.exit(
             "❌  No .snap file found in dist/snap/ or repo root.\n"
-            "  Run first:  python3 build_packages.py --snap"
+            f"  Run first:  {PYTHON_CMD} build_packages.py --snap"
         )
 
     print(f"  Snap file: {snap_file.name}")
@@ -178,7 +186,7 @@ def publish_chocolatey() -> None:
     if nupkg is None:
         sys.exit(
             "❌  No .nupkg found in dist/choco/.\n"
-            "  Run first:  python3 build_packages.py --win"
+            f"  Run first:  {PYTHON_CMD} build_packages.py --win"
         )
 
     print(f"  Package: {nupkg.name}")
@@ -239,13 +247,13 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python3 publish_packages.py --check\n"
-            "  python3 publish_packages.py --pypi --test\n"
-            "  python3 publish_packages.py --pypi\n"
-            "  python3 publish_packages.py --snap\n"
-            "  python3 publish_packages.py --snap --channel edge\n"
-            "  python3 publish_packages.py --chocolatey\n"
-            "  python3 publish_packages.py --github-release v2.1.0\n"
+            f"  {PYTHON_CMD} publish_packages.py --check\n"
+            f"  {PYTHON_CMD} publish_packages.py --pypi --test\n"
+            f"  {PYTHON_CMD} publish_packages.py --pypi\n"
+            f"  {PYTHON_CMD} publish_packages.py --snap\n"
+            f"  {PYTHON_CMD} publish_packages.py --snap --channel edge\n"
+            f"  {PYTHON_CMD} publish_packages.py --chocolatey\n"
+            f"  {PYTHON_CMD} publish_packages.py --github-release v2.1.0\n"
         )
     )
 

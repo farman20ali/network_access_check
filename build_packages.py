@@ -37,6 +37,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 DIST_DIR  = REPO_ROOT / "dist"
 
+# ── python executable (platform-aware) ────────────────────────────────────────
+# On Windows 'python3' is not on PATH; use 'python'. On Unix prefer 'python3'.
+PYTHON_CMD = "python" if platform.system().lower() == "windows" else "python3"
+
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -602,10 +606,9 @@ def build_linux_bin() -> None:
 
 def build_pypi() -> None:
     print("\n─── Building PyPI Packages (Wheel + sdist) ───")
-    if not tool_ok("python3") and not tool_ok("python"):
+    if not tool_ok(PYTHON_CMD) and not tool_ok("python"):
         sys.exit("Error: python is not available")
-    python_cmd = "python3" if tool_ok("python3") else "python"
-    run([python_cmd, "-m", "build"], "PyPI Package Builder (wheel + sdist)")
+    run([PYTHON_CMD, "-m", "build"], "PyPI Package Builder (wheel + sdist)")
 
 
 # ── --all ──────────────────────────────────────────────────────────────────────
