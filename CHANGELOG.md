@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`netcheck/__main__.py`** — standard `python3 -m netcheck` entry point.
 - **CI workflow** (`.github/workflows/ci.yml`) — matrix tests across Python 3.8–3.12 on Ubuntu, macOS, Windows.
 - **Comprehensive CLI test suite** (`tests/test_cli.py`) — 15 tests covering all subcommands and flags.
+- **Snap packaging overhaul** (`packaging/snap/snapcraft.yaml`):
+  - Moved Snap icon to `packaging/snap/gui/icon.png` (copied to `snap/gui/` at build time by `build_packages.py`).
+  - Re-added multi-architecture builds: `amd64`, `arm64`, `armhf`.
+  - Switched plugin from `dump` (bash) to `python` (pure Python 3); only `iputils-ping` needed as a stage-package.
+  - Added `PYTHONPATH` environment variable so the snap runtime resolves installed site-packages correctly.
+  - Expanded Snap Store description to reflect all v2.x features: subcommand CLI, MCP server, structured output, lenient target parsing, build orchestration, and the `sudo snap connect` instruction.
+- **Icon & asset management** (`assets/icons/`):
+  - `assets/icons/icon.png` — 512×512 master PNG (source of truth for all icon variants).
+  - `assets/icons/icon.ico` — 256×256 Windows ICO (used for `.exe`, NSIS installer, and Add/Remove Programs entry).
+  - `packaging/snap/gui/icon.png` — 512×512 PNG for Snap Store listing.
+  - `packaging/windows/netcheck.nsi` — wired `Icon`, `UninstallIcon`, and `DisplayIcon` registry key to `assets/icons/icon.ico`.
+  - `packaging/chocolatey/netcheck.nuspec` — added `<iconUrl>` pointing to the raw master PNG on GitHub.
+  - `build_packages.py` — `--win` target now passes `--icon assets/icons/icon.ico` to PyInstaller; `--snap` copies `packaging/snap/gui/` → `snap/gui/` before `snapcraft` runs.
 
 ### Changed
 - `build_packages.py` refactored to render templates from `packaging/` instead of embedding inline script strings.
@@ -163,6 +176,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-OS support (Ubuntu, Debian, CentOS, Fedora, Arch, openSUSE)
 - Three installation methods (manual, DEB, Snap)
 
+[2.1.0]: https://github.com/farman20ali/network_access_check/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/farman20ali/network_access_check/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/farman20ali/network_access_check/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/farman20ali/network_access_check/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/farman20ali/network_access_check/releases/tag/v1.0.0

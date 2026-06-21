@@ -322,12 +322,12 @@ def build_snap() -> None:
         sys.exit("Error: 'snapcraft' not found.\n  Install: sudo snap install snapcraft --classic")
 
     version = get_version()
-    # Render template from packaging/snap/snapcraft.yaml → snap/snapcraft.yaml
-    src_yaml  = REPO_ROOT / "packaging" / "snap" / "snapcraft.yaml"
     snap_dir  = REPO_ROOT / "snap"
     snap_dir.mkdir(parents=True, exist_ok=True)
-    dest_yaml = snap_dir / "snapcraft.yaml"
 
+    # ── render snapcraft.yaml template ──────────────────────────────────────
+    src_yaml  = REPO_ROOT / "packaging" / "snap" / "snapcraft.yaml"
+    dest_yaml = snap_dir / "snapcraft.yaml"
     if src_yaml.exists():
         txt = src_yaml.read_text()
         txt = txt.replace("{version}", version)
@@ -335,6 +335,17 @@ def build_snap() -> None:
         print(f"Prepared snap/snapcraft.yaml with version {version}")
     else:
         print(f"⚠️   Template not found: {src_yaml}. Using existing snap/snapcraft.yaml if present.")
+
+    # ── copy packaging/snap/gui/ → snap/gui/ (icon for Snap Store) ──────────
+    src_gui = REPO_ROOT / "packaging" / "snap" / "gui"
+    if src_gui.exists():
+        dest_gui = snap_dir / "gui"
+        if dest_gui.exists():
+            shutil.rmtree(dest_gui)
+        shutil.copytree(src_gui, dest_gui)
+        print(f"Copied snap GUI assets ({', '.join(p.name for p in src_gui.iterdir())}) → snap/gui/")
+    else:
+        print("⚠️   No packaging/snap/gui/ found — snap will have no store icon.")
 
     try:
         # --destructive-mode: build on the host directly — no LXD/container needed
@@ -363,13 +374,21 @@ def build_snap() -> None:
 
 # ── --win / --mac ──────────────────────────────────────────────────────────────
 
-def _pyinstaller_build(name: str, out_subdir: str, exe_name: str) -> None:
+def _pyinstaller_build(name: str, out_subdir: str, exe_name: str,
+                       icon: Path | None = None) -> None:
+    """Run PyInstaller for *name* platform. Pass *icon* (Path) for Windows."""
     if not pyinstaller_ok():
         sys.exit("Error: PyInstaller not found.\n  Install: pip install pyinstaller")
 
     entry = REPO_ROOT / "netcheck" / "__main__.py"
-    run(["pyinstaller", "--onefile", "--name", "netcheck", "--clean", str(entry)],
-        f"PyInstaller ({name})")
+    cmd = ["pyinstaller", "--onefile", "--name", "netcheck", "--clean"]
+    if icon and icon.exists():
+        cmd += ["--icon", str(icon)]
+        print(f"Using icon: {icon}")
+    elif icon:
+        print(f"⚠️   Icon not found at {icon} — building without icon.")
+    cmd.append(str(entry))
+    run(cmd, f"PyInstaller ({name})")
 
     out_dir = DIST_DIR / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -551,7 +570,8 @@ def build_mac_pkg(version: str) -> None:
 
 def build_win() -> None:
     print("\n─── Building Windows Executable (.exe) ───")
-    _pyinstaller_build("Windows", "win", "netcheck.exe")
+    icon = REPO_ROOT / "assets" / "icons" / "icon.ico"
+    _pyinstaller_build("Windows", "win", "netcheck.exe", icon=icon)
     version = get_version()
     build_win_installer(version)
     build_choco_package(version)
