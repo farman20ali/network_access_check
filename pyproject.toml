@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netcheckx"
+version = "2.1.0.1"
+description = "Network connectivity checker with DNS, ping, HTTP, and SSL validation. (Published as netcheckx on PyPI to avoid naming conflict with legacy netcheck package)"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "GPL-3.0-only"
+authors = [
+    { name = "Network Tools Team", email = "admin@example.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "build>=1.0.0",
+    "pyinstaller>=6.0.0"
+]
+
+[project.scripts]
+netcheck = "netcheck.cli:main"
+netcheckx = "netcheck.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["netcheck*"]

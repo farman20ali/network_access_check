@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>netcheck</id>
+    <version>{version}</version>
+    <title>NetCheck</title>
+    <authors>Farman Ali</authors>
+    <owners>Farman Ali</owners>
+    <projectUrl>https://github.com/farman20ali/network_access_check</projectUrl>
+    <licenseUrl>https://github.com/farman20ali/network_access_check/blob/main/LICENSE</licenseUrl>
+    <iconUrl>https://raw.githubusercontent.com/farman20ali/network_access_check/feature/assets/icons/icon.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>A premium, cross-platform network intelligence engine and CLI rewritten in pure Python 3.
+
+Supports:
+- DNS lookup (A/AAAA, cached, strict timeouts)
+- TCP port connectivity (concurrent scanning)
+- HTTP/HTTPS audits (latency, content size, redirects)
+- SSL/TLS certificate validation (subject, issuer, expiry warnings)
+- ICMP ping (packet loss and RTT stats)
+- Network interface enumeration with public IP
+- Structured output: text, JSON, CSV, XML
+- Model Context Protocol (MCP) server for AI assistants
+- Lenient target parsing: URLs, IP ranges, CIDR, port ranges, CSV files</description>
+    <summary>Cross-platform network diagnostics engine — DNS, TCP, HTTP, SSL, ping, MCP</summary>
+    <tags>netcheck network ping dns ssl http tcp mcp diagnostic cli tool cross-platform</tags>
+    <releaseNotes>https://github.com/farman20ali/network_access_check/blob/feature/CHANGELOG.md</releaseNotes>
+  </metadata>
+  <files>
+    <!-- Only include the install/uninstall scripts, not embedded binaries -->
+    <file src="tools\chocolateyInstall.ps1" target="tools" />
+    <file src="tools\chocolateyUninstall.ps1" target="tools" />
+  </files>
+</package>

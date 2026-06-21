@@ -1,0 +1,392 @@
+name: Release Packaging and Deployment
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux Packages (PyPI, Binary, DEB, RPM)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev rpm debhelper build-essential
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Build PyPI Package
+        run: |
+          python build_packages.py --pypi
+
+      - name: Build Linux Binary
+        run: |
+          python build_packages.py --linux
+
+      - name: Build Debian Package
+        run: |
+          python build_packages.py --deb
+
+      - name: Build RPM Package
+        run: |
+          python build_packages.py --rpm
+
+      # Linux and macOS binaries are both literally named "netcheck".
+      # Rename AFTER every step that still needs the original filename
+      # (nothing further in this job touches dist/linux/netcheck), so
+      # they don't collide once everything lands in one flat release.
+      - name: Rename Linux Binary
+        run: mv dist/linux/netcheck dist/linux/netcheck-linux
+
+      - name: Debug - List dist contents
+        run: find dist -type f
+
+      - name: Upload Linux Packages Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/linux/netcheck-linux
+            dist/deb/netcheck_*.deb
+            dist/rpm/netcheck*.rpm
+
+  build-snap:
+    name: Build Snap Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Prepare Snap Build Directory
+        run: |
+          python -c '
+          import re, shutil
+          from pathlib import Path
+          content = Path("netcheck/__init__.py").read_text()
+          version = re.search(r"__version__\s*=\s*[\x27\x22]([^\x27\x22]+)[\x27\x22]", content).group(1)
+          Path("snap").mkdir(exist_ok=True)
+          txt = Path("packaging/snap/snapcraft.yaml").read_text().replace("{version}", version)
+          Path("snap/snapcraft.yaml").write_text(txt)
+          if Path("packaging/snap/gui").exists():
+              shutil.copytree("packaging/snap/gui", "snap/gui", dirs_exist_ok=True)
+          '
+
+      - name: Build Snap
+        uses: snapcore/action-build@v1
+        id: snapcraft
+
+      - name: Upload Snap Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snap-package
+          path: ${{ steps.snapcraft.outputs.snap }}
+
+  build-windows:
+    name: Build Windows Packages (Binary, Setup, Chocolatey)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install NSIS
+        run: |
+          choco install nsis --yes --no-progress
+          echo "C:\Program Files (x86)\NSIS" >> $GITHUB_PATH
+        shell: bash
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Build Windows Packages
+        run: |
+          python build_packages.py --win
+
+      - name: Debug - List dist contents
+        shell: bash
+        run: find dist -type f
+
+      - name: Upload Windows Packages Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            dist/win/netcheck.exe
+            dist/win/*-setup.exe
+            dist/choco/*.nupkg
+
+  build-mac:
+    name: Build macOS Packages (Binary, PKG)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Build macOS Packages
+        run: |
+          python build_packages.py --mac
+
+      # build_mac_pkg() reads dist/mac/netcheck directly to build the .pkg,
+      # so the rename must happen AFTER --mac fully completes, not before.
+      - name: Rename macOS Binary
+        run: mv dist/mac/netcheck dist/mac/netcheck-macos
+
+      - name: Debug - List dist contents
+        run: find dist -type f
+
+      - name: Upload macOS Packages Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-packages
+          path: |
+            dist/mac/netcheck-macos
+            dist/mac/*.pkg
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-linux, build-snap, build-windows, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-packages
+          path: release-artifacts/
+
+      - name: Download Snap Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: snap-package
+          path: release-artifacts/
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-packages
+          path: release-artifacts/
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-packages
+          path: release-artifacts/
+
+      - name: Debug - List downloaded artifacts (nested)
+        run: find release-artifacts -type f
+
+      # upload-artifact@v4 preserves original relative paths (e.g.
+      # dist/win/foo.exe), so everything downloads nested under
+      # release-artifacts/. softprops/action-gh-release can only attach
+      # files, not directories, so flatten everything first.
+      - name: Flatten Release Artifacts
+        run: |
+          mkdir -p flat-release
+          find release-artifacts -type f \( \
+            -name "*.whl" -o \
+            -name "*.tar.gz" -o \
+            -name "*.deb" -o \
+            -name "*.rpm" -o \
+            -name "*.exe" -o \
+            -name "*.nupkg" -o \
+            -name "*.pkg" -o \
+            -name "*.snap" -o \
+            -name "netcheck-linux" -o \
+            -name "netcheck-macos" \
+          \) -exec cp {} flat-release/ \;
+          echo "Flattened release files:"
+          ls -la flat-release/
+
+      - name: Parse Release Notes
+        id: release_notes
+        run: |
+          # Strip 'v' prefix if present to match filename convention (e.g. v2.0.0 -> 2.0.0)
+          TAG_NAME="${{ github.ref_name }}"
+          VERSION="${TAG_NAME#v}"
+          NOTES_FILE="docs/releases/RELEASE_NOTES_V${VERSION}.md"
+
+          if [ -f "$NOTES_FILE" ]; then
+            echo "Release notes file found: $NOTES_FILE"
+            echo "notes<<EOF" >> $GITHUB_OUTPUT
+            cat "$NOTES_FILE" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "Release notes file NOT found: $NOTES_FILE"
+            echo "notes=No release notes provided for this version." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: NetCheck ${{ github.ref_name }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          draft: false
+          prerelease: false
+          files: flat-release/*
+
+  # ── Publish jobs ──────────────────────────────────────────────────────────
+  # Secrets can't be read in a JOB-level `if:` (only github/needs/vars/inputs
+  # are available there). They CAN be read in a STEP-level `if:`, as long as
+  # the secret is first mapped to `env:` on that same step — env set on a
+  # step is visible to that step's own `if:` evaluation. So each publish job
+  # always runs (cheap — it's just a download + a conditional step), but the
+  # actual publish step is skipped with a clear log line if its secret is
+  # missing, instead of failing the run.
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build-linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux Artifacts (contains wheel + sdist)
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-packages
+          path: dist-download/
+
+      - name: Collect PyPI Artifacts
+        run: |
+          mkdir -p pypi-dist
+          find dist-download -name "*.whl" -exec cp {} pypi-dist/ \;
+          find dist-download -name "*.tar.gz" -exec cp {} pypi-dist/ \;
+          ls -la pypi-dist/
+
+      - name: Set up Python
+        if: env.PYPI_API_TOKEN != ''
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Twine
+        if: env.PYPI_API_TOKEN != ''
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: pip install twine
+
+      - name: Upload to PyPI
+        if: env.PYPI_API_TOKEN != ''
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload pypi-dist/* --skip-existing
+
+      - name: Skip notice
+        if: env.PYPI_API_TOKEN == ''
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: echo "PYPI_API_TOKEN not set — skipping PyPI publish."
+
+  publish-snap:
+    name: Publish to Snap Store
+    needs: build-snap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Snap Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: snap-package
+          path: snap-download/
+
+      - name: Debug - List downloaded snap
+        run: find snap-download -type f
+
+      - name: Install snapcraft
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: sudo snap install snapcraft --classic
+
+      - name: Publish Snap to Store
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          SNAP_FILE=$(find snap-download -name "*.snap" | head -n1)
+          snapcraft upload "$SNAP_FILE" --release stable
+
+      - name: Skip notice
+        if: env.SNAPCRAFT_STORE_CREDENTIALS == ''
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: echo "SNAPCRAFT_STORE_CREDENTIALS not set — skipping Snap Store publish."
+
+  publish-choco:
+    name: Publish to Chocolatey
+    needs: build-windows
+    runs-on: windows-latest
+    steps:
+      - name: Download Windows Artifacts (contains .nupkg)
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-packages
+          path: choco-download/
+
+      - name: Debug - List downloaded nupkg
+        shell: bash
+        run: find choco-download -type f
+
+      - name: Push to Chocolatey
+        if: env.CHOCO_API_KEY != ''
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+        run: |
+          $nupkg = Get-ChildItem -Path choco-download -Filter *.nupkg -Recurse | Select-Object -First 1
+          if (-not $nupkg) {
+            Write-Error "No .nupkg file found to publish."
+            exit 1
+          }
+          choco push $nupkg.FullName --source "https://push.chocolatey.org/" --api-key "$env:CHOCO_API_KEY"
+
+      - name: Skip notice
+        if: env.CHOCO_API_KEY == ''
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+        run: Write-Host "CHOCO_API_KEY not set — skipping Chocolatey publish."

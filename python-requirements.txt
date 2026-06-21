@@ -1,16 +1,18 @@
-# No Python dependencies required - netcheck is a pure Bash script
-# 
-# System dependencies (installed via apt/yum/pacman):
-# - bash (>= 4.0)
-# - telnet or netcat-openbsd
-# - curl (for HTTP status checks)
-# - openssl (for SSL certificate validation)
-# - bc (for time calculations)
-# - iproute2 or net-tools (for network interface display)
-# - dnsutils (for DNS lookups)
-# - iputils-ping (for ICMP ping tests)
+# netcheck - local development requirements
+# Install with: pip install -r python-requirements.txt
 #
-# All dependencies are automatically installed by:
-# - install.sh (system-wide installation)
-# - build-deb.sh (DEB package)
-# - build-snap.sh (Snap package)
+# For production install, run:   pip install .
+# For dev install with extras:   pip install -e ".[dev]"
+
+# ── Runtime (all stdlib, no third-party runtime deps) ────────────────────────
+# netcheck has zero runtime dependencies by design.
+# The cryptography package is an optional enhancement for SSL fallbacks.
+cryptography>=3.0.0  # optional: improved SSL cert parsing fallback
+
+# ── Development & Testing ─────────────────────────────────────────────────────
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# ── Build & Packaging ─────────────────────────────────────────────────────────
+build>=1.0.0
+pyinstaller>=6.0.0

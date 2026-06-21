@@ -2,40 +2,33 @@
 
 # Default target
 help:
-	@echo "Network Connectivity Checker (netcheck) - Installation"
+	@echo "Network Connectivity Checker (netcheck) - Make Commands"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make install     - Install netcheck system-wide (requires sudo)"
 	@echo "  make uninstall   - Uninstall netcheck (requires sudo)"
-	@echo "  make test        - Run basic tests"
-	@echo "  make clean       - Remove temporary files"
+	@echo "  make test        - Run unit tests using pytest"
+	@echo "  make clean       - Clean temporary results and build artifacts"
 	@echo ""
 	@echo "Quick usage:"
 	@echo "  sudo make install"
 
 install:
-	@echo "Installing netcheck..."
-	@sudo ./install.sh
+	@./packaging/linux/install.sh
 
 uninstall:
-	@echo "Uninstalling netcheck..."
-	@sudo ./uninstall.sh
+	@./packaging/linux/uninstall.sh
 
 test:
-	@echo "Running basic tests..."
-	@echo ""
-	@echo "Test 1: Help command"
-	@./check_ip.sh --help | head -5
-	@echo ""
-	@echo "Test 2: Quick test localhost:80"
-	@./check_ip.sh -q localhost 80 || true
-	@echo ""
-	@echo "Test 3: Stdin input"
-	@echo "localhost 80" | ./check_ip.sh 2>&1 | grep -E "Check Complete|Total"
-	@echo ""
-	@echo "Tests completed!"
+	@if command -v pytest > /dev/null; then \
+		PYTHONPATH=. pytest tests/ -v; \
+	else \
+		PYTHONPATH=. python3 -m pytest tests/ -v; \
+	fi
 
 clean:
-	@echo "Cleaning temporary files..."
-	@rm -f result.txt fail-*.txt combined-*.txt
+	@echo "Cleaning temporary files and build caches..."
+	@rm -rf build/ dist/ *.egg-info/ .pytest_cache/ .benchmarks/
+	@find . -type d -name "__pycache__" -exec rm -rf {} +
+	@rm -f result-* fail-* combined-*
 	@echo "Done!"

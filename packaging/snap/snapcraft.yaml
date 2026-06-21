@@ -1,0 +1,90 @@
+name: netcheck
+version: '{version}'
+summary: Cross-platform network diagnostics engine — DNS, TCP, HTTP, SSL, ping, MCP
+title: NetCheck - Network Connectivity Tester
+icon: snap/gui/icon.png  # copied from packaging/snap/gui/ by build_packages.py at build time
+license: GPL-3.0
+website: https://github.com/farman20ali/network_access_check
+source-code: https://github.com/farman20ali/network_access_check
+issues: https://github.com/farman20ali/network_access_check/issues
+contact: https://github.com/farman20ali/network_access_check/issues
+description: |
+  A premium, cross-platform network intelligence engine and CLI — rewritten
+  in pure Python 3 with zero external binary dependencies.
+
+  Core Diagnostic Features:
+  - DNS lookup — native socket resolution with caching and strict timeouts, URL support
+  - TCP port connectivity — concurrent host/port scanning, IPv6 dual-stack fallback
+  - HTTP/HTTPS audits — status codes, latency, content size, redirect tracking
+  - SSL/TLS validation — subject, issuer, expiry warnings (30-day / 7-day), cryptography fallback
+  - ICMP ping — packet loss statistics and round-trip time (RTT) via system ping
+  - Network interfaces — enumerate active interfaces with IPs, gateway, and public IP
+
+  Advanced Features (v2.0+):
+  - Subcommand CLI: tcp, dns, http, ssl, ping, interfaces
+  - Legacy flags kept for backward compatibility (-q, -d, -p, -s, --cert, --my-ip)
+  - Lenient target parsing: URLs, IP ranges (192.168.1.1-50), CIDR (10.0.0.0/24),
+    port ranges (8000-8100), port lists (80,443,3306), CSV files
+  - Structured output: --format text | json | csv | xml
+  - Configurable thread pools (--jobs, default 10) with real-time progress tracking
+  - Retry logic (--retry / --retry-delay) for intermittent connections
+  - Configurable ping packet count (netcheck ping -c <count>)
+  - Dated result files: result-YYYY-MM-DD.txt, fail-*, combined-*
+
+  Model Context Protocol (MCP) Server (v2.0+):
+  - Run with: netcheck --mcp
+  - Exposes dns_lookup, ping_host, check_tcp_port, check_http_status,
+    check_ssl_certificate, and list_interfaces to AI assistants
+  - Compatible with Claude Desktop, ChatGPT, and other MCP clients
+
+  Build & Packaging (v2.1.0):
+  - Single build orchestrator: python3 build_packages.py --all
+  - Targets: Snap, DEB, RPM, Windows EXE/NSIS/Chocolatey, macOS PKG
+  - --sync-version flag propagates version across all config files
+
+  Perfect for:
+  - System administrators monitoring infrastructure health
+  - DevOps engineers validating deployments and load balancers
+  - Security auditing, port scanning, and SSL expiry tracking
+  - DNS resolution verification across environments
+  - AI agents using MCP tool integrations for network diagnostics
+
+  IMPORTANT: For full functionality, run after installation:
+    sudo snap connect netcheck:network-observe
+
+  This connection enables:
+  - ICMP ping tests (netcheck ping / -p flag)
+  - Network interface enumeration (netcheck interfaces / --my-ip flag)
+
+  Without this connection, TCP port tests, DNS lookup, HTTP status checks,
+  SSL certificate validation, and retry logic all work normally.
+
+grade: stable
+confinement: strict
+
+base: core22
+
+architectures:
+  - build-on: amd64
+  - build-on: arm64
+  - build-on: armhf
+
+apps:
+  netcheck:
+    command: bin/netcheck
+    plugs:
+      - network
+      - network-bind
+      - network-observe
+      - home
+    environment:
+      LC_ALL: C.UTF-8
+      PYTHONPATH: $SNAP/lib/python3.10/site-packages:$SNAP/usr/lib/python3/dist-packages
+
+parts:
+  netcheck:
+    plugin: python
+    source: .
+    source-type: local
+    stage-packages:
+      - iputils-ping
