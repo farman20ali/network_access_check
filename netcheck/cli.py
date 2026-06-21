@@ -186,6 +186,13 @@ class NetCheckArgumentParser(argparse.ArgumentParser):
         sys.exit(2)
 
 def main():
+    # Force stdout and stderr to UTF-8 to prevent UnicodeEncodeError on Windows
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except (AttributeError, TypeError):
+        pass
+
     if len(sys.argv) < 2:
         # Check if stdin has data
         if not sys.stdin.isatty():

@@ -21,6 +21,13 @@ import re
 import shutil
 import subprocess
 import sys
+
+# Force stdout and stderr to UTF-8 to prevent UnicodeEncodeError on Windows
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except (AttributeError, TypeError):
+    pass
 import tempfile
 import textwrap
 from datetime import datetime, timezone
