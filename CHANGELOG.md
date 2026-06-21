@@ -5,7 +5,34 @@ All notable changes to netcheck will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-06-21
+
+### Added
+- **`packaging/` directory** — all platform-specific templates live in one place:
+  - `packaging/snap/snapcraft.yaml` — Snap template with `{version}` placeholder
+  - `packaging/linux/install.sh` / `uninstall.sh` — installer scripts
+  - `packaging/windows/netcheck.nsi` — NSIS installer template
+  - `packaging/chocolatey/` — Chocolatey `.nuspec` + install script
+  - `packaging/macos/scripts/` — placeholder for macOS PKG scripts
+- **`--sync-version VERSION`** flag in `build_packages.py` — propagates a new version to `__init__.py`, `pyproject.toml`, `netcheck/mcp/server.py`, and `packaging/snap/snapcraft.yaml` in one command.
+- **`netcheck/__main__.py`** — standard `python3 -m netcheck` entry point.
+- **CI workflow** (`.github/workflows/ci.yml`) — matrix tests across Python 3.8–3.12 on Ubuntu, macOS, Windows.
+- **Comprehensive CLI test suite** (`tests/test_cli.py`) — 15 tests covering all subcommands and flags.
+
+### Changed
+- `build_packages.py` refactored to render templates from `packaging/` instead of embedding inline script strings.
+- `build_snap()` now auto-cleans `snap/`, `stage/`, `prime/`, `parts/` artefact directories from the repo root after each build.
+- `Makefile` `install`/`uninstall` targets updated to point to `packaging/linux/`.
+- `README.md` fully rewritten to reflect Python-native packaging, all install options, and build commands.
+
+### Removed
+- `build-deb.sh`, `build-snap.sh` — superseded by `build_packages.py`.
+- `check_ip.py`, `check_ip.sh` — legacy wrappers deleted.
+- `PYTHON_README.md` — stub file removed; `README.md` is now the single source of truth.
+- Root-level `install.sh`, `uninstall.sh`, `snap/` — moved to `packaging/linux/` and `packaging/snap/`.
+
 ## [2.0.0] - 2026-06-06
+
 
 ### Added
 - **Complete Pure Python 3 Rewrite**:

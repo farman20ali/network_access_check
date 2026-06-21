@@ -4,21 +4,28 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcheck"
-version = "2.0.0"
+version = "2.1.0"
 description = "Network connectivity checker with DNS, ping, HTTP, and SSL validation"
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "GPL-3.0" }
+license = "GPL-3.0-only"
 authors = [
     { name = "Network Tools Team", email = "admin@example.com" }
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
     "Topic :: System :: Networking :: Monitoring",
 ]
 dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "build>=1.0.0",
+    "pyinstaller>=6.0.0"
+]
 
 [project.scripts]
 netcheck = "netcheck.cli:main"

@@ -1,5 +1,5 @@
 name: netcheck
-version: '2.0.0'
+version: '2.1.0'
 summary: Network diagnostics engine (DNS, ping, HTTP, TCP, SSL, interfaces)
 title: NetCheck - Network Connectivity Tester
 license: GPL-3.0

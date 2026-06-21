@@ -322,15 +322,34 @@ def build_snap() -> None:
         sys.exit("Error: 'snapcraft' not found.\n  Install: sudo snap install snapcraft --classic")
 
     version = get_version()
-    yaml    = REPO_ROOT / "snap" / "snapcraft.yaml"
-    if yaml.exists():
-        txt = yaml.read_text()
-        txt = re.sub(r"version:\s*['\"].*?['\"]", f"version: '{version}'", txt)
-        yaml.write_text(txt)
-        print(f"Updated snap/snapcraft.yaml version → {version}")
+    # Render template from packaging/snap/snapcraft.yaml → snap/snapcraft.yaml
+    src_yaml  = REPO_ROOT / "packaging" / "snap" / "snapcraft.yaml"
+    snap_dir  = REPO_ROOT / "snap"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    dest_yaml = snap_dir / "snapcraft.yaml"
 
-    # --destructive-mode: build on the host directly — no LXD/container needed
-    run(["snapcraft", "pack", "--destructive-mode", "--verbose"], "snapcraft pack")
+    if src_yaml.exists():
+        txt = src_yaml.read_text()
+        txt = txt.replace("{version}", version)
+        dest_yaml.write_text(txt)
+        print(f"Prepared snap/snapcraft.yaml with version {version}")
+    else:
+        print(f"⚠️   Template not found: {src_yaml}. Using existing snap/snapcraft.yaml if present.")
+
+    try:
+        # --destructive-mode: build on the host directly — no LXD/container needed
+        run(["snapcraft", "pack", "--destructive-mode", "--verbose"], "snapcraft pack")
+    finally:
+        # Remove the temporary snap/ dir generated for the build
+        if snap_dir.exists():
+            shutil.rmtree(snap_dir)
+            print("Cleaned up temporary snap/ directory.")
+        # Remove snapcraft artefact folders from repo root
+        for _folder in ("stage", "prime", "parts"):
+            _p = REPO_ROOT / _folder
+            if _p.exists():
+                shutil.rmtree(_p)
+                print(f"Cleaned up {_folder}/ from repo root.")
 
     snaps = list(REPO_ROOT.glob("netcheck_*.snap"))
     if snaps:
@@ -338,6 +357,7 @@ def build_snap() -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
         dest = out_dir / snaps[-1].name
         shutil.copy2(snaps[-1], dest)
+        snaps[-1].unlink()  # remove from root
         print(f"\n✅  Snap package: {dest}")
 
 
@@ -347,7 +367,7 @@ def _pyinstaller_build(name: str, out_subdir: str, exe_name: str) -> None:
     if not pyinstaller_ok():
         sys.exit("Error: PyInstaller not found.\n  Install: pip install pyinstaller")
 
-    entry = REPO_ROOT / "netcheck" / "cli.py"
+    entry = REPO_ROOT / "netcheck" / "__main__.py"
     run(["pyinstaller", "--onefile", "--name", "netcheck", "--clean", str(entry)],
         f"PyInstaller ({name})")
 
@@ -362,14 +382,199 @@ def _pyinstaller_build(name: str, out_subdir: str, exe_name: str) -> None:
         print(f"⚠️   PyInstaller finished but {exe_name} not found in dist/")
 
 
+def build_win_installer(version: str) -> None:
+    print("\n─── Building Windows NSIS Setup Installer ───")
+    if not tool_ok("makensis"):
+        print("⚠️   makensis not found. Skipping Windows Installer build.")
+        return
+
+    nsi_template = REPO_ROOT / "packaging" / "windows" / "netcheck.nsi"
+    if not nsi_template.exists():
+        print(f"⚠️   NSIS template not found at {nsi_template}. Skipping.")
+        return
+
+    nsi_content = nsi_template.read_text(encoding="utf-8").replace("{version}", version)
+    nsi_path = REPO_ROOT / "dist" / "netcheck.nsi"
+    nsi_path.write_text(nsi_content, encoding="utf-8")
+    run(["makensis", str(nsi_path)], "NSIS Compiler")
+    print(f"✅  Windows NSIS Installer built at dist/win/netcheck-{version}-setup.exe")
+
+
+def _build_win_installer_legacy(version: str) -> None:
+    """Kept for reference – inline NSIS script used before packaging/ templates."""
+    nsi_content = f"""
+!define PRODUCT_NAME "netcheck"
+!define PRODUCT_VERSION "{version}"
+!define PRODUCT_PUBLISHER "Network Tools Team"
+!define PRODUCT_WEB_SITE "https://github.com/farman20ali/network_access_check"
+
+SetCompressor lzma
+
+Name "${{PRODUCT_NAME}}"
+OutFile "dist\\win\\netcheck-${{PRODUCT_VERSION}}-setup.exe"
+InstallDir "$PROGRAMFILES64\\${{PRODUCT_NAME}}"
+RequestExecutionLevel admin
+
+Page directory
+Page instfiles
+
+Section "Install"
+    SetOutPath "$INSTDIR"
+    File "dist\\win\\netcheck.exe"
+    
+    WriteUninstaller "$INSTDIR\\uninstall.exe"
+    
+    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${{PRODUCT_NAME}}" "DisplayName" "${{PRODUCT_NAME}}"
+    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${{PRODUCT_NAME}}" "UninstallString" '"$INSTDIR\\uninstall.exe"'
+    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${{PRODUCT_NAME}}" "DisplayVersion" "${{PRODUCT_VERSION}}"
+    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${{PRODUCT_NAME}}" "Publisher" "${{PRODUCT_PUBLISHER}}"
+    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${{PRODUCT_NAME}}" "URLInfoAbout" "${{PRODUCT_WEB_SITE}}"
+
+    # Add to system PATH (using registry)
+    ReadRegStr $0 HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "Path"
+    WriteRegExpandStr HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "Path" "$0;$INSTDIR"
+    
+    # Broadcast environment change (WM_SETTINGCHANGE)
+    SendMessage 0x001A 0 0 /TIMEOUT=5000
+SectionEnd
+
+Section "Uninstall"
+    Delete "$INSTDIR\\netcheck.exe"
+    Delete "$INSTDIR\\uninstall.exe"
+    RMDir "$INSTDIR"
+    
+    DeleteRegKey HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${{PRODUCT_NAME}}"
+SectionEnd
+"""
+    nsi_path = REPO_ROOT / "dist" / "netcheck.nsi"
+    nsi_path.write_text(nsi_content, encoding="utf-8")
+    
+    run(["makensis", str(nsi_path)], "NSIS Compiler")
+    print(f"✅  Windows NSIS Installer built at dist/win/netcheck-{version}-setup.exe")
+
+
+def build_choco_package(version: str) -> None:
+    print("\n─── Building Chocolatey Package ───")
+    if not tool_ok("choco"):
+        print("⚠️   choco not found. Skipping Chocolatey package build.")
+        return
+
+    choco_dir = REPO_ROOT / "dist" / "choco"
+    choco_dir.mkdir(parents=True, exist_ok=True)
+    tools_dir = choco_dir / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy netcheck.exe to tools/
+    shutil.copy2(REPO_ROOT / "dist" / "win" / "netcheck.exe", tools_dir / "netcheck.exe")
+
+    # Read .nuspec template from packaging/
+    nuspec_template = REPO_ROOT / "packaging" / "chocolatey" / "netcheck.nuspec"
+    install_template = REPO_ROOT / "packaging" / "chocolatey" / "tools" / "chocolateyInstall.ps1"
+
+    if not nuspec_template.exists():
+        print(f"⚠️   Chocolatey nuspec template not found at {nuspec_template}. Skipping.")
+        return
+
+    nuspec_content = nuspec_template.read_text(encoding="utf-8").replace("{version}", version)
+    nuspec_path = choco_dir / "netcheck.nuspec"
+    nuspec_path.write_text(nuspec_content, encoding="utf-8")
+
+    if install_template.exists():
+        shutil.copy2(install_template, tools_dir / "chocolateyInstall.ps1")
+
+    run(["choco", "pack", str(nuspec_path), "--outputdirectory", "dist/choco"], "Chocolatey Packager", cwd=choco_dir)
+    print(f"✅  Chocolatey package built at dist/choco/netcheck.{version}.nupkg")
+
+
+def _build_choco_package_legacy(version: str) -> None:
+    """Kept for reference – inline nuspec generation before packaging/ templates."""
+    nuspec_content = f"""<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>netcheck</id>
+    <version>{version}</version>
+    <title>NetCheck</title>
+    <authors>Network Tools Team</authors>
+    <owners>Network Tools Team</owners>
+    <projectUrl>https://github.com/farman20ali/network_access_check</projectUrl>
+    <licenseUrl>https://github.com/farman20ali/network_access_check/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Network connectivity checker with DNS, ping, HTTP, and SSL validation</description>
+    <summary>A premium, cross-platform network diagnostic engine</summary>
+    <tags>netcheck network ping dns ssl http diagnostic cli tool</tags>
+  </metadata>
+  <files>
+    <file src="tools\\**" target="tools" />
+  </files>
+</package>
+"""
+    nuspec_path = choco_dir / "netcheck.nuspec"
+    nuspec_path.write_text(nuspec_content, encoding="utf-8")
+
+    # Generate chocolateyInstall.ps1 (optional but recommended for completeness)
+    install_ps1 = """$ErrorActionPreference = 'Stop';
+$toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
+# Embedded package automatically shims netcheck.exe
+"""
+    (tools_dir / "chocolateyInstall.ps1").write_text(install_ps1, encoding="utf-8")
+
+    # Run choco pack
+    run(["choco", "pack", str(nuspec_path), "--outputdirectory", "dist/choco"], "Chocolatey Packager", cwd=choco_dir)
+    print(f"✅  Chocolatey package built at dist/choco/netcheck.{version}.nupkg")
+
+
+def build_mac_pkg(version: str) -> None:
+    print("\n─── Building macOS Installer Package (.pkg) ───")
+    if not tool_ok("pkgbuild"):
+        print("⚠️   pkgbuild not found. Skipping macOS .pkg build.")
+        return
+
+    pkg_dir = REPO_ROOT / "dist" / "mac_pkg"
+    bin_dir = pkg_dir / "usr" / "local" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy netcheck binary to usr/local/bin
+    shutil.copy2(REPO_ROOT / "dist" / "mac" / "netcheck", bin_dir / "netcheck")
+
+    pkg_out = REPO_ROOT / "dist" / "mac" / f"netcheck-{version}.pkg"
+    
+    run([
+        "pkgbuild",
+        "--root", str(pkg_dir),
+        "--identifier", "com.netcheck.cli",
+        "--version", version,
+        "--install-location", "/",
+        str(pkg_out)
+    ], "pkgbuild")
+    print(f"✅  macOS .pkg built at {pkg_out}")
+
+
 def build_win() -> None:
     print("\n─── Building Windows Executable (.exe) ───")
     _pyinstaller_build("Windows", "win", "netcheck.exe")
+    version = get_version()
+    build_win_installer(version)
+    build_choco_package(version)
 
 
 def build_mac() -> None:
     print("\n─── Building macOS Binary ───")
     _pyinstaller_build("macOS", "mac", "netcheck")
+    version = get_version()
+    build_mac_pkg(version)
+
+
+def build_linux_bin() -> None:
+    print("\n─── Building Linux Executable ───")
+    _pyinstaller_build("Linux", "linux", "netcheck")
+
+
+def build_pypi() -> None:
+    print("\n─── Building PyPI Packages (Wheel + sdist) ───")
+    if not tool_ok("python3") and not tool_ok("python"):
+        sys.exit("Error: python is not available")
+    python_cmd = "python3" if tool_ok("python3") else "python"
+    run([python_cmd, "-m", "build"], "PyPI Package Builder (wheel + sdist)")
 
 
 # ── --all ──────────────────────────────────────────────────────────────────────
@@ -381,6 +586,18 @@ def build_all() -> None:
     results: dict[str, str] = {}
 
     if plat == "linux":
+        try:
+            build_pypi()
+            results["PyPI (wheel/sdist)"] = "✅  Success"
+        except SystemExit as e:
+            results["PyPI (wheel/sdist)"] = f"❌  Failed — {e}"
+
+        try:
+            build_linux_bin()
+            results["Linux Binary"] = "✅  Success"
+        except SystemExit as e:
+            results["Linux Binary"] = f"❌  Failed — {e}"
+
         for label, fn in [("DEB", build_deb), ("Snap", build_snap), ("RPM", build_rpm)]:
             try:
                 fn()
@@ -391,14 +608,17 @@ def build_all() -> None:
         try:
             build_win()
             results["Windows EXE"] = "✅  Success"
+            results["Windows Installer"] = "✅  Success" if tool_ok("makensis") else "⚠️   Skipped (no makensis)"
+            results["Chocolatey Package"] = "✅  Success" if tool_ok("choco") else "⚠️   Skipped (no choco)"
         except SystemExit as e:
-            results["Windows EXE"] = f"❌  Failed — {e}"
+            results["Windows builds"] = f"❌  Failed — {e}"
     elif plat == "darwin":
         try:
             build_mac()
             results["macOS Binary"] = "✅  Success"
+            results["macOS PKG"] = "✅  Success" if tool_ok("pkgbuild") else "⚠️   Skipped (no pkgbuild)"
         except SystemExit as e:
-            results["macOS Binary"] = f"❌  Failed — {e}"
+            results["macOS builds"] = f"❌  Failed — {e}"
     else:
         sys.exit(f"Unsupported host OS: {plat}")
 
@@ -410,25 +630,84 @@ def build_all() -> None:
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
+def sync_version(new_version: str) -> None:
+    """Propagate *new_version* to every file that embeds the version string."""
+    print(f"\nSynchronising version → {new_version}")
+
+    _subs = [
+        # (path_relative_to_REPO_ROOT, regex_pattern, replacement_template)
+        ("netcheck/__init__.py",
+         r'__version__\s*=\s*[\'"][^\'"]+[\'"]',
+         f'__version__ = "{new_version}"'),
+        ("pyproject.toml",
+         r'(?m)^version\s*=\s*[\'"][^\'"]+[\'"]',
+         f'version = "{new_version}"'),
+        ("netcheck/mcp/server.py",
+         r'"version":\s*[\'"][^\'"]+[\'"]',
+         f'"version": "{new_version}"'),
+        # packaging templates use literal {version} placeholders – skip regex here
+    ]
+
+    for rel, pattern, repl in _subs:
+        path = REPO_ROOT / rel
+        if not path.exists():
+            print(f"  ⚠️   {rel} not found – skipped")
+            continue
+        original = path.read_text(encoding="utf-8")
+        updated  = re.sub(pattern, repl, original)
+        if updated != original:
+            path.write_text(updated, encoding="utf-8")
+            print(f"  ✓ {rel}")
+        else:
+            print(f"  – {rel}  (no change)")
+
+    # packaging/snap/snapcraft.yaml keeps a literal '{version}' placeholder
+    snap_yaml = REPO_ROOT / "packaging" / "snap" / "snapcraft.yaml"
+    if snap_yaml.exists():
+        txt = snap_yaml.read_text()
+        txt = re.sub(r"version:\s*['\"][^'\"]+['\"]", f"version: '{new_version}'", txt)
+        snap_yaml.write_text(txt)
+        print(f"  ✓ packaging/snap/snapcraft.yaml")
+
+    print("Version synchronisation complete!\n")
+
+
 def main() -> None:
-    p = argparse.ArgumentParser(description="netcheck package builder")
-    p.add_argument("--check", action="store_true", help="Diagnose packaging tools")
-    p.add_argument("--deb",   action="store_true", help="Build Debian .deb")
-    p.add_argument("--rpm",   action="store_true", help="Build RPM (no alien needed)")
-    p.add_argument("--snap",  action="store_true", help="Build Snap .snap")
-    p.add_argument("--win",   action="store_true", help="Build Windows .exe (PyInstaller)")
-    p.add_argument("--mac",   action="store_true", help="Build macOS binary (PyInstaller)")
-    p.add_argument("--all",   action="store_true", help="Build all for current OS")
+    p = argparse.ArgumentParser(
+        description="netcheck package builder",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python build_packages.py --sync-version 2.1.0\n"
+            "  python build_packages.py --check\n"
+            "  python build_packages.py --deb\n"
+            "  python build_packages.py --snap\n"
+            "  python build_packages.py --all\n"
+        )
+    )
+    p.add_argument("--check",        action="store_true",  help="Diagnose available packaging tools")
+    p.add_argument("--sync-version", metavar="VERSION",    help="Sync VERSION to all config files (pyproject.toml, __init__.py, etc.)")
+    p.add_argument("--pypi",         action="store_true",  help="Build PyPI wheel + sdist")
+    p.add_argument("--linux",        action="store_true",  help="Build Linux binary (PyInstaller)")
+    p.add_argument("--deb",          action="store_true",  help="Build Debian .deb")
+    p.add_argument("--rpm",          action="store_true",  help="Build RPM")
+    p.add_argument("--snap",         action="store_true",  help="Build Snap .snap")
+    p.add_argument("--win",          action="store_true",  help="Build Windows exe + NSIS + Choco")
+    p.add_argument("--mac",          action="store_true",  help="Build macOS binary + PKG")
+    p.add_argument("--all",          action="store_true",  help="Build all for current OS")
     args = p.parse_args()
 
-    if   args.check: run_check()
-    elif args.deb:   build_deb()
-    elif args.rpm:   build_rpm()
-    elif args.snap:  build_snap()
-    elif args.win:   build_win()
-    elif args.mac:   build_mac()
-    elif args.all:   build_all()
-    else:            p.print_help()
+    if   args.sync_version: sync_version(args.sync_version)
+    elif args.check:        run_check()
+    elif args.pypi:         build_pypi()
+    elif args.linux:        build_linux_bin()
+    elif args.deb:          build_deb()
+    elif args.rpm:          build_rpm()
+    elif args.snap:         build_snap()
+    elif args.win:          build_win()
+    elif args.mac:          build_mac()
+    elif args.all:          build_all()
+    else:                   p.print_help()
 
 
 if __name__ == "__main__":

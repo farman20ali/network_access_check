@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>netcheck</id>
+    <version>{version}</version>
+    <title>NetCheck</title>
+    <authors>Network Tools Team</authors>
+    <owners>Network Tools Team</owners>
+    <projectUrl>https://github.com/farman20ali/network_access_check</projectUrl>
+    <licenseUrl>https://github.com/farman20ali/network_access_check/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Network connectivity checker with DNS, ping, HTTP, and SSL validation</description>
+    <summary>A premium, cross-platform network diagnostic engine</summary>
+    <tags>netcheck network ping dns ssl http diagnostic cli tool</tags>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

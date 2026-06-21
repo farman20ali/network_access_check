@@ -98,10 +98,8 @@ def print_help():
     cmd_name = "netcheck"
     if len(sys.argv) > 0:
         prog = sys.argv[0]
-        if "check_ip.sh" in prog:
-            cmd_name = "./check_ip.sh"
-        elif "check_ip.py" in prog:
-            cmd_name = "python3 check_ip.py"
+        if "netcheck" not in prog and ("__main__.py" in prog or "cli.py" in prog):
+            cmd_name = "python3 -m netcheck"
             
     help_text = f"""Network Connectivity Checker - Advanced Version
 

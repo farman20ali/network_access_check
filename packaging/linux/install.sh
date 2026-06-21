@@ -76,7 +76,7 @@ create_man_page() {
     mkdir -p "$man_dir"
     
     cat > "$man_dir/netcheck.1" << 'EOF'
-.TH NETCHECK 1 "May 2026" "version 2.0.0" "Network Intelligence Engine"
+.TH NETCHECK 1 "May 2026" "version {version}" "Network Intelligence Engine"
 .SH NAME
 netcheck \- network diagnostics, connectivity checks, and interfaces listing
 .SH SYNOPSIS

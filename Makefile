@@ -14,10 +14,10 @@ help:
 	@echo "  sudo make install"
 
 install:
-	@./install.sh
+	@./packaging/linux/install.sh
 
 uninstall:
-	@./uninstall.sh
+	@./packaging/linux/uninstall.sh
 
 test:
 	@if command -v pytest > /dev/null; then \

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-linux:
-    name: Build Linux Packages (DEB, RPM)
+    name: Build Linux Packages (PyPI, Binary, DEB, RPM)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -25,33 +25,39 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y alien dpkg-dev
+          sudo apt-get install -y dpkg-dev rpm
 
-      - name: Install PyProject dependencies
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          # We don't have any strict dependencies in pyproject.toml, but we can verify it installs
-          pip install .
+          pip install .[dev]
+
+      - name: Build PyPI Package
+        run: |
+          python build_packages.py --pypi
+
+      - name: Build Linux Binary
+        run: |
+          python build_packages.py --linux
 
       - name: Build Debian Package
         run: |
-          python3 build_packages.py --deb
+          python build_packages.py --deb
 
       - name: Build RPM Package
         run: |
-          python3 build_packages.py --rpm
+          python build_packages.py --rpm
 
-      - name: Upload Debian Package Artifact
+      - name: Upload Linux Packages Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: deb-package
-          path: dist/deb/netcheck_*.deb
-
-      - name: Upload RPM Package Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: rpm-package
-          path: dist/rpm/netcheck*.rpm
+          name: linux-packages
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/linux/netcheck
+            dist/deb/netcheck_*.deb
+            dist/rpm/netcheck*.rpm
 
   build-snap:
     name: Build Snap Package
@@ -71,7 +77,7 @@ jobs:
           path: ${{ steps.snapcraft.outputs.snap }}
 
   build-windows:
-    name: Build Windows Binary
+    name: Build Windows Packages (Binary, Setup, Chocolatey)
     runs-on: windows-latest
     steps:
       - name: Checkout Repository
@@ -82,23 +88,32 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install PyInstaller
+      - name: Install NSIS
+        run: |
+          choco install nsis --yes --no-progress
+          echo "C:\Program Files (x86)\NSIS" >> $GITHUB_PATH
+        shell: bash
+
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
+          pip install .[dev]
 
-      - name: Build Windows Binary
+      - name: Build Windows Packages
         run: |
           python build_packages.py --win
 
-      - name: Upload Windows Binary Artifact
+      - name: Upload Windows Packages Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-binary
-          path: dist/win/netcheck.exe
+          name: windows-packages
+          path: |
+            dist/win/netcheck.exe
+            dist/win/*-setup.exe
+            dist/choco/*.nupkg
 
   build-mac:
-    name: Build macOS Binary
+    name: Build macOS Packages (Binary, PKG)
     runs-on: macos-latest
     steps:
       - name: Checkout Repository
@@ -109,20 +124,22 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install PyInstaller
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
+          pip install .[dev]
 
-      - name: Build macOS Binary
+      - name: Build macOS Packages
         run: |
           python build_packages.py --mac
 
-      - name: Upload macOS Binary Artifact
+      - name: Upload macOS Packages Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-binary
-          path: dist/mac/netcheck
+          name: mac-packages
+          path: |
+            dist/mac/netcheck
+            dist/mac/*.pkg
 
   create-release:
     name: Create GitHub Release
@@ -132,34 +149,28 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Download DEB Package Artifact
+      - name: Download Linux Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: deb-package
+          name: linux-packages
           path: release-artifacts/
 
-      - name: Download RPM Package Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: rpm-package
-          path: release-artifacts/
-
-      - name: Download Snap Package Artifact
+      - name: Download Snap Artifacts
         uses: actions/download-artifact@v4
         with:
           name: snap-package
           path: release-artifacts/
 
-      - name: Download Windows Binary Artifact
+      - name: Download Windows Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: windows-binary
+          name: windows-packages
           path: release-artifacts/
 
-      - name: Download macOS Binary Artifact
+      - name: Download macOS Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: macos-binary
+          name: mac-packages
           path: release-artifacts/
 
       - name: Parse Release Notes
@@ -172,8 +183,6 @@ jobs:
           
           if [ -f "$NOTES_FILE" ]; then
             echo "Release notes file found: $NOTES_FILE"
-            # output the content to a temp file or output variable
-            # Using GITHUB_OUTPUT for multiline strings
             echo "notes<<EOF" >> $GITHUB_OUTPUT
             cat "$NOTES_FILE" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
