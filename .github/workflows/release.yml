@@ -73,16 +73,17 @@ jobs:
 
       - name: Prepare Snap Build Directory
         run: |
-          python -c "
+          python -c '
           import re, shutil
           from pathlib import Path
-          version = re.search(r'__version__\s*=\s*[\'']([^\'']+)[\'']', Path('netcheck/__init__.py').read_text()).group(1)
-          Path('snap').mkdir(exist_ok=True)
-          txt = Path('packaging/snap/snapcraft.yaml').read_text().replace('{version}', version)
-          Path('snap/snapcraft.yaml').write_text(txt)
-          if Path('packaging/snap/gui').exists():
-              shutil.copytree('packaging/snap/gui', 'snap/gui', dirs_exist_ok=True)
-          "
+          content = Path("netcheck/__init__.py").read_text()
+          version = re.search(r"__version__\s*=\s*[\x27\x22]([^\x27\x22]+)[\x27\x22]", content).group(1)
+          Path("snap").mkdir(exist_ok=True)
+          txt = Path("packaging/snap/snapcraft.yaml").read_text().replace("{version}", version)
+          Path("snap/snapcraft.yaml").write_text(txt)
+          if Path("packaging/snap/gui").exists():
+              shutil.copytree("packaging/snap/gui", "snap/gui", dirs_exist_ok=True)
+          '
 
       - name: Build Snap
         uses: snapcore/action-build@v1

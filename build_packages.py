@@ -419,7 +419,11 @@ def build_win_installer(version: str) -> None:
         print(f"⚠️   NSIS template not found at {nsi_template}. Skipping.")
         return
 
-    nsi_content = nsi_template.read_text(encoding="utf-8").replace("{version}", version)
+    nsi_content = (
+        nsi_template.read_text(encoding="utf-8")
+        .replace("{version}", version)
+        .replace("{repo_root}", str(REPO_ROOT.resolve()))
+    )
     nsi_path = REPO_ROOT / "dist" / "netcheck.nsi"
     nsi_path.write_text(nsi_content, encoding="utf-8")
     run(["makensis", str(nsi_path)], "NSIS Compiler")

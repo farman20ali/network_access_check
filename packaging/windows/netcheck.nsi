@@ -2,12 +2,12 @@
 !define PRODUCT_VERSION "{version}"
 !define PRODUCT_PUBLISHER "Network Tools Team"
 !define PRODUCT_WEB_SITE "https://github.com/farman20ali/network_access_check"
-!define ICON_FILE "assets\icons\icon.ico"
+!define ICON_FILE "{repo_root}\assets\icons\icon.ico"
 
 SetCompressor lzma
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "dist\win\netcheck-${PRODUCT_VERSION}-setup.exe"
+OutFile "{repo_root}\dist\win\netcheck-${PRODUCT_VERSION}-setup.exe"
 InstallDir "$PROGRAMFILES64\${PRODUCT_NAME}"
 RequestExecutionLevel admin
 
@@ -20,7 +20,7 @@ Page instfiles
 
 Section "Install"
     SetOutPath "$INSTDIR"
-    File "dist\win\netcheck.exe"
+    File "{repo_root}\dist\win\netcheck.exe"
     File "${ICON_FILE}"
     
     WriteUninstaller "$INSTDIR\uninstall.exe"
