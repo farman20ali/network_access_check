@@ -17,7 +17,10 @@ A premium, cross-platform, production-grade **Network Intelligence Engine & CLI*
 - **Structured Output** — Every check returns `--format text|json|csv|xml`.
 - **MCP Server** — Turns `netcheck` into a local tool-server for Claude, ChatGPT, and other AI agents.
 - **Lenient Parsing** — Accepts CSVs, URLs, bracketed IPv6, IP ranges (`192.168.1.1-50`), CIDR (`10.0.0.0/24`), port lists (`80,443`), and port ranges (`8000-8100`).
-- **Concurrent Batch Checks** — Configurable thread pools (`--jobs`) with real-time progress.
+- **Concurrent Batch Checks** — Configurable thread pools (`--jobs`, default 10) with real-time progress.
+- **DNS Caching** — Resolves each host once per run; subsequent checks reuse the cached result.
+- **IPv6 Dual-Stack TCP** — Tries all resolved IPs (IPv4 + IPv6) until one connects.
+- **SSL Inspection Fallback** — Uses the `cryptography` library to inspect certificate metadata even when strict TLS validation fails.
 
 ---
 
@@ -91,6 +94,7 @@ python3 -m netcheck --help
 | `-f, --format` | `text` | Output format: `text`, `json`, `csv`, `xml` |
 | `--retry` | `1` | Number of connection attempts |
 | `--retry-delay` | `1` | Delay between retries (seconds) |
+| `-c, --count` | `4` | Ping packet count (`ping` subcommand only) |
 | `-v, --version` | — | Print version and exit |
 
 ### Legacy Flags (kept for backward compatibility)

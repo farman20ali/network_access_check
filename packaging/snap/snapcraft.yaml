@@ -13,12 +13,12 @@ description: |
   in pure Python 3 with zero external binary dependencies.
 
   Core Diagnostic Features:
-  - DNS lookup — A/AAAA records, cached queries, strict timeouts, URL support
-  - TCP port connectivity — concurrent host/port scanning with configurable jobs
+  - DNS lookup — native socket resolution with caching and strict timeouts, URL support
+  - TCP port connectivity — concurrent host/port scanning, IPv6 dual-stack fallback
   - HTTP/HTTPS audits — status codes, latency, content size, redirect tracking
-  - SSL/TLS validation — subject, issuer, expiry warnings (30-day / 7-day)
-  - ICMP ping — packet loss statistics and round-trip time (RTT) via Python
-  - Network interfaces — enumerate active interfaces with IPs and public IP
+  - SSL/TLS validation — subject, issuer, expiry warnings (30-day / 7-day), cryptography fallback
+  - ICMP ping — packet loss statistics and round-trip time (RTT) via system ping
+  - Network interfaces — enumerate active interfaces with IPs, gateway, and public IP
 
   Advanced Features (v2.0+):
   - Subcommand CLI: tcp, dns, http, ssl, ping, interfaces
@@ -26,8 +26,9 @@ description: |
   - Lenient target parsing: URLs, IP ranges (192.168.1.1-50), CIDR (10.0.0.0/24),
     port ranges (8000-8100), port lists (80,443,3306), CSV files
   - Structured output: --format text | json | csv | xml
-  - Configurable thread pools (--jobs) with real-time progress tracking
+  - Configurable thread pools (--jobs, default 10) with real-time progress tracking
   - Retry logic (--retry / --retry-delay) for intermittent connections
+  - Configurable ping packet count (netcheck ping -c <count>)
   - Dated result files: result-YYYY-MM-DD.txt, fail-*, combined-*
 
   Model Context Protocol (MCP) Server (v2.0+):
