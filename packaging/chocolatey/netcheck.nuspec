@@ -27,6 +27,8 @@ Supports:
     <releaseNotes>https://github.com/farman20ali/network_access_check/blob/feature/CHANGELOG.md</releaseNotes>
   </metadata>
   <files>
-    <file src="tools\**" target="tools" />
+    <!-- Only include the install/uninstall scripts, not embedded binaries -->
+    <file src="tools\chocolateyInstall.ps1" target="tools" />
+    <file src="tools\chocolateyUninstall.ps1" target="tools" />
   </files>
 </package>

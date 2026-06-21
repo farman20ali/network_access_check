@@ -498,12 +498,10 @@ def build_choco_package(version: str) -> None:
     tools_dir = choco_dir / "tools"
     tools_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy netcheck.exe to tools/
-    shutil.copy2(REPO_ROOT / "dist" / "win" / "netcheck.exe", tools_dir / "netcheck.exe")
-
     # Read .nuspec template from packaging/
     nuspec_template = REPO_ROOT / "packaging" / "chocolatey" / "netcheck.nuspec"
     install_template = REPO_ROOT / "packaging" / "chocolatey" / "tools" / "chocolateyInstall.ps1"
+    uninstall_template = REPO_ROOT / "packaging" / "chocolatey" / "tools" / "chocolateyUninstall.ps1"
 
     if not nuspec_template.exists():
         print(f"⚠️   Chocolatey nuspec template not found at {nuspec_template}. Skipping.")
@@ -513,8 +511,13 @@ def build_choco_package(version: str) -> None:
     nuspec_path = choco_dir / "netcheck.nuspec"
     nuspec_path.write_text(nuspec_content, encoding="utf-8")
 
+    # Copy install and uninstall scripts (NOT the .exe binary)
     if install_template.exists():
-        shutil.copy2(install_template, tools_dir / "chocolateyInstall.ps1")
+        install_content = install_template.read_text(encoding="utf-8").replace("{version}", version)
+        (tools_dir / "chocolateyInstall.ps1").write_text(install_content, encoding="utf-8")
+    
+    if uninstall_template.exists():
+        shutil.copy2(uninstall_template, tools_dir / "chocolateyUninstall.ps1")
 
     run(["choco", "pack", str(nuspec_path), "--outputdirectory", "dist/choco"], "Chocolatey Packager", cwd=choco_dir)
     print(f"✅  Chocolatey package built at dist/choco/netcheck.{version}.nupkg")

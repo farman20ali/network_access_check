@@ -110,10 +110,12 @@ None. All legacy CLI flags remain fully supported.
 
 | Artefact | Platform |
 |---|---|
-| `netcheck-2.1.0-py3-none-any.whl` | PyPI / all platforms |
-| `netcheck-2.1.0.tar.gz` | Source distribution |
+| `netcheckx-2.1.0-py3-none-any.whl` | PyPI / all platforms |
+| `netcheckx-2.1.0.tar.gz` | Source distribution (PyPI) |
 | `netcheck_2.1.0-1_all.deb` | Debian / Ubuntu |
 | `netcheck_2.1.0_amd64.snap` | All Linux (Snap Store) |
+| `netcheck-2.1.0-setup.exe` | Windows NSIS Installer |
+| `netcheck-2.1.0.nupkg` | Windows Chocolatey |
 
 ---
 
@@ -121,7 +123,7 @@ None. All legacy CLI flags remain fully supported.
 
 ### From v2.0.0 (pip install)
 ```bash
-pip install --upgrade netcheck
+pip install --upgrade netcheckx
 ```
 
 ### From v2.0.0 (snap)
