@@ -36,8 +36,9 @@ Section "Install"
     ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
     WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$0;$INSTDIR"
     
-    ; Broadcast environment change (WM_SETTINGCHANGE)
-    SendMessage 0x001A 0 0 /TIMEOUT=5000
+    ; Broadcast environment change so PATH is picked up without rebooting
+    ; HWND_BROADCAST=65535, WM_SETTINGCHANGE=0x001A, wParam=0, lParam="Environment"
+    SendMessage 65535 26 0 "STR:Environment" /TIMEOUT=5000
 SectionEnd
 
 Section "Uninstall"
