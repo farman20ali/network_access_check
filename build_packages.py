@@ -539,7 +539,24 @@ def build_choco_package(version: str) -> None:
 
     # Copy install and uninstall scripts (NOT the .exe binary)
     if install_template.exists():
-        install_content = install_template.read_text(encoding="utf-8").replace("{version}", version)
+        import hashlib
+        installer_path = DIST_DIR / "win" / f"netcheck-{version}-setup.exe"
+        checksum = ""
+        if installer_path.exists():
+            h = hashlib.sha256()
+            with open(installer_path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    h.update(chunk)
+            checksum = h.hexdigest()
+            print(f"Calculated installer SHA-256: {checksum}")
+        else:
+            print(f"⚠️   Windows installer not found at {installer_path}. Checksum placeholder will not be replaced.")
+        
+        install_content = (
+            install_template.read_text(encoding="utf-8")
+            .replace("{version}", version)
+            .replace("{checksum64}", checksum)
+        )
         (tools_dir / "chocolateyInstall.ps1").write_text(install_content, encoding="utf-8")
     
     if uninstall_template.exists():
@@ -550,6 +567,11 @@ def build_choco_package(version: str) -> None:
 
 def _build_choco_package_legacy(version: str) -> None:
     """Kept for reference – inline nuspec generation before packaging/ templates."""
+    choco_dir = REPO_ROOT / "dist" / "choco"
+    choco_dir.mkdir(parents=True, exist_ok=True)
+    tools_dir = choco_dir / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+
     nuspec_content = f"""<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
