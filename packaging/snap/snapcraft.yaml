@@ -2,8 +2,8 @@ name: netcheck
 version: '{version}'
 summary: Cross-platform network diagnostics engine — DNS, TCP, HTTP, SSL, ping, MCP
 title: NetCheck - Network Connectivity Tester
-icon: snap/gui/icon.png  # copied from packaging/snap/gui/ by build_packages.py at build time
-license: GPL-3.0
+icon: snap/gui/icon.png
+license: GPL-3.0-only
 website: https://github.com/farman20ali/network_access_check
 source-code: https://github.com/farman20ali/network_access_check
 issues: https://github.com/farman20ali/network_access_check/issues
@@ -79,7 +79,6 @@ apps:
       - home
     environment:
       LC_ALL: C.UTF-8
-      PYTHONPATH: $SNAP/lib/python3.10/site-packages:$SNAP/usr/lib/python3/dist-packages
 
 parts:
   netcheck:
@@ -88,3 +87,12 @@ parts:
     source-type: local
     stage-packages:
       - iputils-ping
+      - python3-venv
+    override-build: |
+      craftctl default
+      # Patch shebang in generated bin/netcheck so it uses env python3
+      # instead of the build-host absolute path — fixes ModuleNotFoundError at runtime
+      SCRIPT="$CRAFT_PART_INSTALL/bin/netcheck"
+      if [ -f "$SCRIPT" ]; then
+        sed -i '1s|^#!.*|#!/usr/bin/env python3|' "$SCRIPT"
+      fi
