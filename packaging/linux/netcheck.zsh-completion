@@ -1,0 +1,116 @@
+#compdef netcheck netcheckx
+# Zsh completion for netcheck v2.2.0
+
+_netcheck() {
+    local -a subcommands
+    subcommands=(
+        'tcp:Check TCP port connectivity'
+        'dns:Perform DNS lookup'
+        'http:Check HTTP/HTTPS status'
+        'ssl:Inspect SSL/TLS certificate'
+        'ping:Ping host via ICMP'
+        'interfaces:List network interfaces'
+        'ports:List local listening ports and services (with Docker)'
+        'traceroute:Trace network path to host'
+        'scan:Concurrent TCP port scan'
+        'whois:RDAP/WHOIS domain or IP lookup'
+    )
+
+    local -a global_opts
+    global_opts=(
+        '(-h --help)'{-h,--help}'[Show help message]'
+        '(-v --version)'{-v,--version}'[Show version]'
+        '(-t --timeout)'{-t,--timeout}'[Connection timeout in seconds]:seconds'
+        '(-j --jobs)'{-j,--jobs}'[Parallel jobs]:count'
+        '(-f --format)'{-f,--format}'[Output format]:format:(text json csv xml)'
+        '(-V --verbose)'{-V,--verbose}'[Verbose output]'
+        '--no-color[Disable ANSI color output]'
+        '-d[DNS lookup]:host'
+        '-p[Ping host]:host'
+        '-s[HTTP status check]:url'
+        '--cert[SSL certificate check]:host'
+        '--my-ip[Show network interfaces]'
+        '--mcp[Start MCP server]'
+    )
+
+    local -a watch_opts
+    watch_opts=(
+        '(-w --watch)'{-w,--watch}'[Enable watch/loop mode]'
+        '(-i --interval)'{-i,--interval}'[Watch refresh interval in seconds]:seconds'
+    )
+
+    local -a format_opts
+    format_opts=(
+        '(-f --format)'{-f,--format}'[Output format]:format:(text json csv xml)'
+        '(-t --timeout)'{-t,--timeout}'[Timeout in seconds]:seconds'
+        '(-V --verbose)'{-V,--verbose}'[Verbose output]'
+        '--retry[Retry count]:count'
+        '--retry-delay[Retry delay in seconds]:seconds'
+        '--no-color[Disable ANSI color]'
+    )
+
+    # Route based on first subcommand arg
+    if (( CURRENT == 2 )); then
+        _describe -t commands 'netcheck subcommand' subcommands
+        _arguments $global_opts
+        return
+    fi
+
+    case $words[2] in
+        tcp)
+            _arguments \
+                ':host:_hosts' \
+                ':port' \
+                '(-j --jobs)'{-j,--jobs}'[Parallel jobs]:count' \
+                '(-o --output)'{-o,--output}'[Output file]:file:_files' \
+                $format_opts $watch_opts
+            ;;
+        dns)
+            _arguments ':host:_hosts' $format_opts $watch_opts
+            ;;
+        http)
+            _arguments \
+                ':url:_urls' \
+                '(-X --method)'{-X,--method}'[HTTP method]:method:(GET HEAD POST PUT DELETE PATCH)' \
+                '(-H --header)'{-H,--header}'[Custom header (Key: Value)]:header' \
+                '--auth[Basic auth (user:pass)]:credentials' \
+                $format_opts $watch_opts
+            ;;
+        ssl)
+            _arguments ':host:_hosts' ':port' $format_opts $watch_opts
+            ;;
+        ping)
+            _arguments \
+                ':host:_hosts' \
+                '(-c --count)'{-c,--count}'[Packet count]:count' \
+                $format_opts $watch_opts
+            ;;
+        interfaces)
+            _arguments \
+                '--all[Show all interfaces including inactive]' \
+                $format_opts $watch_opts
+            ;;
+        ports)
+            _arguments \
+                $format_opts $watch_opts
+            ;;
+        traceroute)
+            _arguments \
+                ':host:_hosts' \
+                '(-m --max-hops)'{-m,--max-hops}'[Maximum hops]:hops' \
+                $format_opts $watch_opts
+            ;;
+        scan)
+            _arguments \
+                ':host:_hosts' \
+                '(-p --ports)'{-p,--ports}'[Ports to scan (e.g. 80,443 or 80-1024)]:ports' \
+                '(-j --jobs)'{-j,--jobs}'[Parallel threads]:count' \
+                $format_opts $watch_opts
+            ;;
+        whois)
+            _arguments ':target:_hosts' $format_opts
+            ;;
+    esac
+}
+
+_netcheck "$@"

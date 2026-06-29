@@ -567,6 +567,95 @@ Interface: virbr0
 
 ---
 
+## 13.5. Local Listening Ports & Services (v2.2.0)
+
+### Show Active Listening Sockets
+```bash
+netcheck ports
+```
+
+Outputs a structured table of listening TCP ports, corresponding PIDs/processes, and maps them to Docker container names where appropriate:
+```
+Local Listening Ports & Services
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔓 Active Listening Sockets:
+  Proto  Local Address                  Port   Process/Service (PID)
+  ──────────────────────────────────────────────────────────────────
+  TCP    0.0.0.0                        22     ssh
+  TCP    0.0.0.0                        80     Docker: nginx-web (80)
+  TCP    0.0.0.0                        445    microsoft-ds
+  TCP    127.0.0.1                      3306   mysql
+  TCP    0.0.0.0                        6379   Docker: redis-cache (6379)
+  TCP    *                              8080   http-alt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+---
+
+## 13.8. Traceroute Path Analysis (v2.2.0)
+
+### Run Hop-by-Hop Traceroute
+```bash
+netcheck traceroute google.com
+```
+
+Displays each routing hop along the path to the host with its IP address, reverse hostname, and round-trip time:
+```
+Traceroute to google.com (142.250.190.46), max 30 hops
+  Hop 1:  192.168.1.1 (router.local)   1.2 ms
+  Hop 2:  10.0.0.1                     3.5 ms
+  Hop 3:  142.250.190.46               12.8 ms
+```
+
+---
+
+## 13.9. Port Scanning (v2.2.0)
+
+### Concurrent TCP Port Scan
+```bash
+netcheck scan localhost
+netcheck scan google.com -p 80,443,8080
+```
+
+Uses a high-concurrency engine to test lists/ranges of ports and identifies services:
+```
+Port Scan for: google.com
+  Port 80    [OPEN]  http (12ms)
+  Port 443   [OPEN]  https (11ms)
+  Port 8080  [CLOSED] http-alt (15ms)
+```
+
+---
+
+## 13.10. WHOIS & RDAP Lookup (v2.2.0)
+
+### Domain & IP Registration Info
+```bash
+netcheck whois google.com
+```
+
+Retrieves ownership, registrar, and creation date via RDAP with a WHOIS fallback:
+```
+WHOIS / RDAP lookup for: google.com
+  Registrar: MarkMonitor Inc.
+  Created: 1997-09-15T04:00:00Z
+  Registration Type: Domain
+```
+
+---
+
+## 13.12. Watch Loop Mode (v2.2.0)
+
+### Monitor Subcommands Continuously
+Any subcommand can be polled periodically to watch live changes in real time. Use `-w` / `--watch` to clear the terminal on update, and `-i` / `--interval` to specify the delay (default is 2.0s):
+```bash
+netcheck tcp google.com 443 --watch --interval 1.5
+```
+
+---
+
 ## 14. HTTP Status Checking (v1.2.0)
 
 ### Basic HTTP Status Check

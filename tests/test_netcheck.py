@@ -359,5 +359,289 @@ class TestFormatterOutputs(unittest.TestCase):
         self.assertEqual(root.tag, "ping_check")
         self.assertEqual(root.find("packet_loss_pct").text, "0.0")
 
+class TestTier2Tier3Features(unittest.TestCase):
+    @patch("urllib.request.urlopen")
+    @patch("urllib.request.Request")
+    def test_http_custom_request(self, mock_request_class, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.getcode.return_value = 200
+        mock_resp.geturl.return_value = "http://example.com"
+        mock_resp.info.return_value = {"Content-Length": "10"}
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+        
+        # Test custom parameters (headers, basic auth)
+        check_http_status(
+            "http://example.com", 
+            method="POST", 
+            headers={"X-Custom-Header": "Test"}, 
+            auth=("user", "pass")
+        )
+        
+        # Verify Request constructor was called with the custom arguments
+        mock_request_class.assert_called_once()
+        args, kwargs = mock_request_class.call_args
+        self.assertEqual(kwargs["method"], "POST")
+        headers = kwargs["headers"]
+        self.assertEqual(headers["X-Custom-Header"], "Test")
+        self.assertIn("Authorization", headers)
+        self.assertTrue(headers["Authorization"].startswith("Basic "))
+
+    @patch("socket.socket")
+    @patch("netcheck.modules.ssl.dns_lookup")
+    def test_ssl_cipher_extraction(self, mock_dns, mock_socket):
+        mock_dns.return_value = {
+            "success": True,
+            "metadata": {"ips": ["93.184.216.34"]}
+        }
+        
+        # Setup socket and ssl mock wrap context
+        mock_sock_instance = MagicMock()
+        mock_socket.return_value = mock_sock_instance
+        
+        mock_ssock = MagicMock()
+        mock_ssock.getpeercert.return_value = {
+            "subject": [[("commonName", "example.com")]],
+            "issuer": [[("organizationName", "DigiCert")]],
+            "notBefore": "Jan 01 00:00:00 2026 GMT",
+            "notAfter": "Dec 31 23:59:59 2026 GMT",
+        }
+        mock_ssock.cipher.return_value = ("ECDHE-RSA-AES256-GCM-SHA384", "TLSv1.3", 256)
+        mock_ssock.version.return_value = "TLSv1.3"
+        
+        with patch("ssl.create_default_context") as mock_create_context:
+            mock_context = MagicMock()
+            mock_context.wrap_socket.return_value.__enter__.return_value = mock_ssock
+            mock_create_context.return_value = mock_context
+            
+            res = check_ssl_certificate("example.com")
+            
+        self.assertTrue(res["success"])
+        self.assertEqual(res["metadata"]["cipher"], "ECDHE-RSA-AES256-GCM-SHA384")
+        self.assertEqual(res["metadata"]["tls_version"], "TLSv1.3")
+
+    @patch("netcheck.modules.traceroute.run_subprocess_traceroute")
+    def test_traceroute_module_fallback(self, mock_run_sub):
+        mock_run_sub.return_value = [
+            {"hop": 1, "ip": "192.168.1.1", "name": "router", "latency_ms": 1.2},
+            {"hop": 2, "ip": "8.8.8.8", "name": "dns", "latency_ms": 10.5}
+        ]
+        
+        # Test traceroute
+        res = list(mock_run_sub.return_value)
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res[0]["ip"], "192.168.1.1")
+
+    @patch("netcheck.modules.port_scanner.dns_lookup")
+    @patch("netcheck.modules.port_scanner.scan_port_single")
+    def test_port_scanner_module(self, mock_scan_single, mock_dns):
+        mock_dns.return_value = {
+            "success": True,
+            "metadata": {"ips": ["1.1.1.1"]}
+        }
+        
+        mock_scan_single.side_effect = lambda ip, port, timeout: {
+            "port": port,
+            "status": "OPEN" if port == 80 else "CLOSED",
+            "service": "http" if port == 80 else "unknown",
+            "latency_ms": 5.0 if port == 80 else None
+        }
+        
+        from netcheck.modules.port_scanner import scan_ports
+        res = scan_ports("example.com", ports=[22, 80])
+        
+        self.assertTrue(res["success"])
+        self.assertEqual(len(res["metadata"]["open_ports"]), 1)
+        self.assertEqual(res["metadata"]["open_ports"][0]["port"], 80)
+        self.assertEqual(len(res["metadata"]["closed_ports"]), 1)
+        self.assertEqual(res["metadata"]["closed_ports"][0]["port"], 22)
+
+    @patch("netcheck.modules.whois.get_rdap_info")
+    def test_whois_rdap_success(self, mock_rdap):
+        mock_rdap.return_value = {
+            "entities": [
+                {
+                    "roles": ["registrar"],
+                    "vcardArray": [
+                        "vcard",
+                        [
+                            ["version", {}, "text", "4.0"],
+                            ["fn", {}, "text", "GoDaddy.com, LLC"]
+                        ]
+                    ]
+                }
+            ],
+            "events": [
+                {"eventAction": "registration", "eventDate": "1999-10-11T11:00:00Z"}
+            ]
+        }
+        
+        from netcheck.modules.whois import lookup_registration
+        res = lookup_registration("google.com")
+        self.assertTrue(res["success"])
+        self.assertEqual(res["metadata"]["registrar"], "GoDaddy.com, LLC")
+        self.assertEqual(res["metadata"]["creation_date"], "1999-10-11T11:00:00Z")
+
+
+class TestFormatterTier3(unittest.TestCase):
+    """Verify JSON, CSV, and XML formatters emit structured output (not generic TCP)
+    for the Tier 3 result types: ports, scan, traceroute, whois."""
+
+    def setUp(self):
+        self.ports_result = {
+            "target": "ports",
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "metadata": {
+                "listening_ports": [
+                    {"proto": "TCP", "address": "0.0.0.0", "port": 22, "process": "sshd", "pid": "1234"},
+                    {"proto": "TCP", "address": "127.0.0.1", "port": 631, "process": "cups", "pid": "567"},
+                ]
+            }
+        }
+        self.scan_result = {
+            "target": "example.com",
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "metadata": {
+                "ips": ["93.184.216.34"],
+                "open_ports": [{"port": 80, "service": "http", "latency_ms": 5.1}],
+                "closed_ports": [{"port": 22, "service": "ssh", "latency_ms": None}],
+            }
+        }
+        self.traceroute_result = {
+            "target": "8.8.8.8",
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "metadata": {
+                "hops": [
+                    {"hop": 1, "ip": "192.168.1.1", "name": "router.local", "latency_ms": 1.2},
+                    {"hop": 2, "ip": "8.8.8.8", "name": "dns.google", "latency_ms": 11.5},
+                ]
+            }
+        }
+        self.whois_result = {
+            "target": "google.com",
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "metadata": {
+                "type": "domain",
+                "rdap_source": "rdap",
+                "registrar": "MarkMonitor Inc.",
+                "creation_date": "1997-09-15T04:00:00Z",
+                "raw_whois": None
+            }
+        }
+
+    # ── JSON ──────────────────────────────────────────────────────────────────
+    def test_json_ports_format(self):
+        from netcheck.utils.formatters import format_json
+        import json
+        out = json.loads(format_json([self.ports_result]))
+        self.assertEqual(out["type"], "ports")
+        self.assertIn("listening_ports", out)
+        self.assertEqual(len(out["listening_ports"]), 2)
+        self.assertEqual(out["listening_ports"][0]["port"], 22)
+
+    def test_json_scan_format(self):
+        from netcheck.utils.formatters import format_json
+        import json
+        out = json.loads(format_json([self.scan_result]))
+        self.assertEqual(out["type"], "scan")
+        self.assertEqual(out["target"], "example.com")
+        self.assertIn("open_ports", out)
+        self.assertEqual(out["open_ports"][0]["port"], 80)
+        self.assertIn("closed_ports", out)
+
+    def test_json_traceroute_format(self):
+        from netcheck.utils.formatters import format_json
+        import json
+        out = json.loads(format_json([self.traceroute_result]))
+        self.assertEqual(out["type"], "traceroute")
+        self.assertEqual(out["target"], "8.8.8.8")
+        self.assertEqual(len(out["hops"]), 2)
+        self.assertEqual(out["hops"][0]["ip"], "192.168.1.1")
+
+    def test_json_whois_format(self):
+        from netcheck.utils.formatters import format_json
+        import json
+        out = json.loads(format_json([self.whois_result]))
+        self.assertEqual(out["check_type"], "whois")
+        self.assertEqual(out["rdap_source"], "rdap")
+        self.assertEqual(out["registrar"], "MarkMonitor Inc.")
+        self.assertEqual(out["creation_date"], "1997-09-15T04:00:00Z")
+
+    # ── CSV ───────────────────────────────────────────────────────────────────
+    def test_csv_ports_format(self):
+        from netcheck.utils.formatters import format_csv
+        import csv
+        rows = list(csv.reader(io.StringIO(format_csv([self.ports_result]))))
+        self.assertEqual(rows[0], ["Proto", "Address", "Port", "Process", "PID"])
+        self.assertEqual(rows[1][3], "sshd")
+
+    def test_csv_scan_format(self):
+        from netcheck.utils.formatters import format_csv
+        import csv
+        rows = list(csv.reader(io.StringIO(format_csv([self.scan_result]))))
+        self.assertEqual(rows[0], ["Target", "Port", "Status", "Service", "Latency_MS"])
+        open_row = next(r for r in rows[1:] if r[2] == "OPEN")
+        self.assertEqual(open_row[1], "80")
+        self.assertEqual(open_row[3], "http")
+
+    def test_csv_traceroute_format(self):
+        from netcheck.utils.formatters import format_csv
+        import csv
+        rows = list(csv.reader(io.StringIO(format_csv([self.traceroute_result]))))
+        self.assertEqual(rows[0], ["Target", "Hop", "IP", "Hostname", "Latency_MS"])
+        self.assertEqual(rows[1][2], "192.168.1.1")
+
+    def test_csv_whois_format(self):
+        from netcheck.utils.formatters import format_csv
+        import csv
+        rows = list(csv.reader(io.StringIO(format_csv([self.whois_result]))))
+        self.assertEqual(rows[0], ["Target", "Type", "Source", "Registrar", "Creation_Date", "Success", "Error"])
+        self.assertEqual(rows[1][3], "MarkMonitor Inc.")
+        self.assertEqual(rows[1][5], "SUCCESS")
+
+    # ── XML ───────────────────────────────────────────────────────────────────
+    def test_xml_ports_format(self):
+        from netcheck.utils.formatters import format_xml
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(format_xml([self.ports_result]))
+        self.assertEqual(root.tag, "listening_ports")
+        ports = root.findall("port")
+        self.assertEqual(len(ports), 2)
+        self.assertEqual(ports[0].attrib["process"], "sshd")
+
+    def test_xml_scan_format(self):
+        from netcheck.utils.formatters import format_xml
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(format_xml([self.scan_result]))
+        self.assertEqual(root.tag, "port_scan")
+        open_ports = root.find("open_ports")
+        self.assertIsNotNone(open_ports)
+        self.assertEqual(open_ports.find("port").attrib["number"], "80")
+
+    def test_xml_traceroute_format(self):
+        from netcheck.utils.formatters import format_xml
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(format_xml([self.traceroute_result]))
+        self.assertEqual(root.tag, "traceroute")
+        hops = root.findall("hop")
+        self.assertEqual(len(hops), 2)
+        self.assertEqual(hops[0].attrib["ip"], "192.168.1.1")
+
+    def test_xml_whois_format(self):
+        from netcheck.utils.formatters import format_xml
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(format_xml([self.whois_result]))
+        self.assertEqual(root.tag, "whois_lookup")
+        self.assertEqual(root.find("registrar").text, "MarkMonitor Inc.")
+        self.assertEqual(root.find("rdap_source").text, "rdap")
+
+
 if __name__ == "__main__":
     unittest.main()

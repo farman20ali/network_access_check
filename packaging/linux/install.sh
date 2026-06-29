@@ -72,13 +72,19 @@ create_man_page() {
     if [[ $USE_USER -eq 1 ]]; then
         man_dir="${HOME}/.local/share/man/man1"
     fi
-    
+
     mkdir -p "$man_dir"
-    
-    cat > "$man_dir/netcheck.1" << 'EOF'
-.TH NETCHECK 1 "May 2026" "version {version}" "Network Intelligence Engine"
+
+    # Use the standalone man page from packaging/linux/ if available
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$SCRIPT_DIR/netcheck.1" ]]; then
+        cp "$SCRIPT_DIR/netcheck.1" "$man_dir/netcheck.1"
+    else
+        # Inline fallback
+        cat > "$man_dir/netcheck.1" << 'EOF'
+.TH NETCHECK 1 "June 2026" "version 2.2.0" "Network Intelligence Engine"
 .SH NAME
-netcheck \- network diagnostics, connectivity checks, and interfaces listing
+netcheck \- cross-platform network diagnostics, connectivity and path analysis
 .SH SYNOPSIS
 .B netcheck
 \fISUBCOMMAND\fR [\fIARGS\fR]
@@ -87,79 +93,14 @@ netcheck \- network diagnostics, connectivity checks, and interfaces listing
 [\fIOPTIONS\fR]
 .SH DESCRIPTION
 .B netcheck
-is a cross-platform, production-grade network diagnostic engine.
-It resolves DNS, tests TCP connectivity, checks HTTP response metrics, inspects SSL lifetimes, pings targets, and lists active interfaces (including WiFi and Hotspots).
-It can also run in Model Context Protocol (MCP) server mode for AI editors.
+is a zero-dependency, cross-platform network diagnostic engine.
+Run 'netcheck --help' for full documentation.
 .SH SUBCOMMANDS
 .TP
-.B tcp \fIhost\fR \fIport\fR
-Check TCP port reachability (supports port lists e.g. 80,443 and ranges e.g. 8000-8010).
-.TP
-.B dns \fIhost\fR
-Lookup IP addresses (A/AAAA) for a host.
-.TP
-.B http \fIurl\fR
-Inspect status code, redirects, size, and response time.
-.TP
-.B ssl \fIhost\fR [\fIport\fR]
-Inspect SSL certificate subject, issuer, and days remaining.
-.TP
-.B ping \fIhost\fR
-Ping a host via ICMP and show RTT stats.
-.TP
-.B interfaces
-List local interfaces and highlight the active outbound route.
-.SH LEGACY OPTIONS
-.TP
-.BR -q ", " --quick " \fIhost\fR \fIport\fR"
-Quick TCP connection test.
-.TP
-.BR -d ", " --dns " \fIhost\fR"
-Perform DNS lookup.
-.TP
-.BR -p ", " --ping " \fIhost\fR"
-Ping host.
-.TP
-.BR -s ", " --status " \fIurl\fR"
-HTTP status check.
-.TP
-.BR --cert " \fIhost\fR"
-SSL certificate check.
-.TP
-.BR -ip ", " --my-ip
-List network interfaces.
-.TP
-.BR --mcp
-Start standard Model Context Protocol JSON-RPC stdio server.
-.TP
-.BR -t ", " --timeout " \fIsec\fR"
-Set connection timeout (default: 5).
-.TP
-.BR -j ", " --jobs " \fInum\fR"
-Configure thread pool size for concurrent bulk checks (default: 10).
-.TP
-.BR -f ", " --format " \fIformat\fR"
-Output format: text, json, csv, xml.
-.TP
-.BR --retry " \fIcount\fR"
-Number of connection attempts (default: 1).
-.TP
-.BR --retry-delay " \fIsec\fR"
-Delay between connection attempts.
-.SH EXAMPLES
-.TP
-Quick TCP check:
-.B netcheck -q google.com 443
-.TP
-HTTP check:
-.B netcheck http https://github.com
-.TP
-Show active WiFi interface:
-.B netcheck interfaces
-.TP
-Start MCP Server:
-.B netcheck --mcp
+.B tcp, dns, http, ssl, ping, interfaces, traceroute, scan, whois
+See netcheck --help for full subcommand reference.
 EOF
+    fi
 
     # Update man database
     if command -v mandb > /dev/null 2>&1; then
@@ -175,51 +116,81 @@ create_bash_completion() {
     if [[ $USE_USER -eq 1 ]]; then
         completion_dir="${HOME}/.local/share/bash-completion/completions"
     fi
-    
+
     mkdir -p "$completion_dir"
-    
-    cat > "$completion_dir/netcheck" << 'EOF'
+
+    # Use the standalone bash completion from packaging/linux/ if available
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$SCRIPT_DIR/netcheck.bash-completion" ]]; then
+        cp "$SCRIPT_DIR/netcheck.bash-completion" "$completion_dir/netcheck"
+    else
+        # Inline fallback with all v2.2.0 subcommands
+        cat > "$completion_dir/netcheck" << 'EOF'
 _netcheck() {
     local cur prev opts subcmds
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    
-    subcmds="tcp dns http ssl ping interfaces"
-    opts="-t --timeout -j --jobs -f --format -c --combined -q --quick -d --dns -p --ping -s --status --cert -ip --my-ip --mcp --csv --retry --retry-delay -h --help -v --version"
-    
+
+    subcmds="tcp dns http ssl ping interfaces traceroute scan whois"
+    opts="-t --timeout -j --jobs -f --format -c --combined -q --quick -d --dns -p --ping -s --status --cert -ip --my-ip --mcp --csv --retry --retry-delay -h --help -v --version -V --verbose --no-color"
+
     case "${prev}" in
         -f|--format)
             COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) )
             return 0
             ;;
+        -X|--method)
+            COMPREPLY=( $(compgen -W "GET HEAD POST PUT DELETE PATCH" -- ${cur}) )
+            return 0
+            ;;
         *)
             ;;
     esac
-    
-    # If starting with subcommands
+
     if [[ ${COMP_CWORD} -eq 1 ]]; then
         COMPREPLY=( $(compgen -W "${subcmds} ${opts}" -- ${cur}) )
         return 0
     fi
-    
+
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
         return 0
     fi
 }
 complete -F _netcheck netcheck
+complete -F _netcheck netcheckx
 EOF
+    fi
     echo -e "${GREEN}✓ Bash completion installed${NC}"
 }
 
-# Create man page and bash completion if permissions allow
+# Create zsh completion
+create_zsh_completion() {
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$SCRIPT_DIR/netcheck.zsh-completion" ]]; then
+        local zsh_dir="/usr/local/share/zsh/site-functions"
+        if [[ $USE_USER -eq 1 ]]; then
+            zsh_dir="${HOME}/.zsh/completions"
+        fi
+        if mkdir -p "$zsh_dir" 2>/dev/null; then
+            cp "$SCRIPT_DIR/netcheck.zsh-completion" "$zsh_dir/_netcheck"
+            echo -e "${GREEN}✓ Zsh completion installed ($zsh_dir/_netcheck)${NC}"
+            echo -e "${YELLOW}  Tip: add 'fpath=(${zsh_dir} \$fpath)' to ~/.zshrc if not already set${NC}"
+        fi
+    fi
+}
+
+# Create man page and completions if permissions allow
 if [[ $USE_USER -eq 0 ]]; then
     create_man_page
     create_bash_completion
+    create_zsh_completion
 else
-    # Install man page in user home directory
+    # Install in user home directory
     create_man_page || true
+    create_bash_completion || true
+    create_zsh_completion || true
 fi
 
 echo ""
@@ -228,7 +199,15 @@ echo -e "${GREEN}║          Installation completed successfully!         ║${
 echo -e "${GREEN}╚════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "Usage examples:"
-echo -e "  ${GREEN}netcheck tcp google.com 443${NC}       # TCP connect"
-echo -e "  ${GREEN}netcheck interfaces${NC}               # Active interfaces"
-echo -e "  ${GREEN}netcheck --mcp${NC}                    # Start MCP Server"
+echo -e "  ${GREEN}netcheck tcp google.com 443${NC}           # TCP connect"
+echo -e "  ${GREEN}netcheck dns github.com${NC}               # DNS lookup"
+echo -e "  ${GREEN}netcheck ssl google.com -V${NC}            # SSL + cipher info"
+echo -e "  ${GREEN}netcheck traceroute 8.8.8.8${NC}           # Trace network path"
+echo -e "  ${GREEN}netcheck scan 192.168.1.1${NC}             # Port scan"
+echo -e "  ${GREEN}netcheck whois google.com${NC}             # WHOIS/RDAP lookup"
+echo -e "  ${GREEN}netcheck tcp google.com 443 -w${NC}        # Watch/loop mode"
+echo -e "  ${GREEN}netcheck interfaces${NC}                   # Active interfaces"
+echo -e "  ${GREEN}netcheck --mcp${NC}                        # Start MCP Server"
+echo -e ""
+echo -e "Tab completion enabled for bash/zsh. Run: ${YELLOW}man netcheck${NC} for full docs."
 echo ""

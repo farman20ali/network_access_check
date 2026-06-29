@@ -5,6 +5,33 @@ All notable changes to netcheck will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-06-28
+
+### Added
+- **Tier 3 Diagnostics Modules**:
+  - `traceroute` module — support cross-platform native raw ICMP sockets or subprocess-based `traceroute`/`tracepath` fallbacks.
+  - `scan` module — fast concurrent port scanner with well-known services dictionary mapping.
+  - `whois` module — modern RDAP HTTP-based registration query with legacy WHOIS port 43 TCP socket fallback.
+- **Local Listening Ports subcommand** (`ports`):
+  - Lists active listening TCP/UDP sockets with address, port, process name, and PID.
+  - Docker-aware: resolves process names to running container names automatically.
+- **Enhanced Connection Security Metadata**:
+  - SSL checks now extract and display the negotiated TLS version, cipher suite, and certificate SHA-256 fingerprint.
+- **Advanced HTTP Execution Parameters**:
+  - `check_http_status` supports custom HTTP methods (e.g. HEAD, POST), HTTP request headers, and Basic Access Authentication.
+- **Watch Loop Mode**:
+  - All subcommands support `-w` or `--watch` with polling interval control (`-i` / `--interval`) and screen clear refreshes.
+- **Global Runtime Configuration overrides**:
+  - Standardized environment variables `NETCHECK_TIMEOUT` and `NETCHECK_MAX_WORKERS` to control connection timeouts and thread pool concurrency.
+- **Structured JSON/CSV/XML output for all subcommands** (CI/CD-ready):
+  - `ports`, `scan`, `traceroute`, and `whois` now emit type-tagged structured records in all machine-readable formats.
+  - JSON keys: `type` (scan/traceroute/ports), `check_type` (whois), `open_ports[]`, `hops[]`, `listening_ports[]`, `registrar`, `creation_date`.
+  - CSV headers tailored per result type (e.g. `Hop,IP,Hostname,Latency_MS` for traceroute).
+  - XML root element names match result type (`<port_scan>`, `<traceroute>`, `<listening_ports>`, `<whois_lookup>`).
+- **Unit and Integration Tests** — expanded to 60 tests:
+  - New `TestFormatterTier3` class: 12 tests verifying JSON, CSV, and XML structured output for `ports`, `scan`, `traceroute`, and `whois`.
+  - Tests cover both output correctness and field presence for CI/CD script consumption.
+
 ## [2.1.0] - 2026-06-21
 
 ### Added
@@ -176,6 +203,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-OS support (Ubuntu, Debian, CentOS, Fedora, Arch, openSUSE)
 - Three installation methods (manual, DEB, Snap)
 
+[2.2.0]: https://github.com/farman20ali/network_access_check/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/farman20ali/network_access_check/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/farman20ali/network_access_check/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/farman20ali/network_access_check/compare/v1.1.0...v1.2.0

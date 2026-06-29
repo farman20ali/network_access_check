@@ -48,39 +48,51 @@ def parse_line_to_raw_host_port(line: str, default_port: str = "80") -> Tuple[st
                     elif rest_host.endswith("]"):
                         return rest_host[1:-1], default_p
                 h, p = rest_host.rsplit(":", 1)
-                if p.isdigit():
+                if all(c.isdigit() or c in ',- ' for c in p) and any(c.isdigit() for c in p):
                     return h, p
                 return rest_host, default_p
             return rest_host, default_p
         except Exception:
             pass
 
+    # Check for IPv6 bracket notation first, e.g. [2a00::]:80,443 or [2a00::] 80
+    if line.startswith("["):
+        if "]:" in line:
+            h, p = line.split("]:", 1)
+            p_clean = p.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].strip()
+            return h[1:], p_clean
+        elif "]" in line:
+            parts = line.split("]", 1)
+            h = parts[0][1:].strip()
+            p_part = parts[1].strip()
+            if p_part.startswith(":"):
+                p_part = p_part[1:].strip()
+            p_clean = p_part.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].strip()
+            return h, (p_clean if p_clean else default_port)
+
     # Does it have whitespace? E.g. "192.168.1.1 80" or "google.com 80,443"
     parts = line.split(None, 1)
     if len(parts) == 2:
-        return parts[0].strip(), parts[1].strip()
-        
+        h_cand, p_cand = parts[0].strip(), parts[1].strip()
+        # Clean up any trailing path from the port if it leaked in
+        p_clean = p_cand.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].strip()
+        if all(c.isdigit() or c in ',- ' for c in p_clean) and any(c.isdigit() for c in p_clean):
+            return h_cand, p_clean
+            
+    # Does it have a colon? E.g. "google.com:80" or "google.com:80,443" or "google.com:80-90"
+    if ":" in line:
+        h_part, p_part = line.rsplit(":", 1)
+        p_clean = p_part.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].strip()
+        if all(c.isdigit() or c in ',- ' for c in p_clean) and any(c.isdigit() for c in p_clean):
+            return h_part.strip(), p_clean
+            
     # Does it have a comma? E.g. "google.com,80" or "google.com,80,443"
     if "," in line and not line.startswith(",") and not line.endswith(","):
         parts = line.split(",", 1)
         h_part, p_part = parts[0].strip(), parts[1].strip()
-        clean_p = p_part.replace("-", "").replace(",", "").replace(" ", "")
-        if clean_p.isdigit():
-            return h_part, p_part
-            
-    # Does it have a colon? E.g. "google.com:80" or "[2a00::]:80"
-    if ":" in line:
-        if line.startswith("["):
-            if "]:" in line:
-                h, p = line.split("]:", 1)
-                p = p.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].strip()
-                return h[1:], p
-            elif line.endswith("]"):
-                return line[1:-1], default_port
-        h, p = line.rsplit(":", 1)
-        p_clean = p.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].strip()
-        if p_clean.isdigit():
-            return h, p_clean
+        p_clean = p_part.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].strip()
+        if all(c.isdigit() or c in ',- ' for c in p_clean) and any(c.isdigit() for c in p_clean):
+            return h_part, p_clean
             
     # Fallback: strip trailing paths/slashes if present (e.g. google.com/path)
     host_clean = line.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].strip()

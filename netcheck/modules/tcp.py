@@ -2,6 +2,7 @@ import socket
 import time
 from typing import Dict, Any
 from netcheck.modules.dns import dns_lookup
+from netcheck.utils.services import get_service_name
 
 def check_tcp_connect(host: str, port: int, timeout: float = 5.0) -> Dict[str, Any]:
     """
@@ -20,7 +21,9 @@ def check_tcp_connect(host: str, port: int, timeout: float = 5.0) -> Dict[str, A
             "host": host,
             "port": port,
             "ip": None,
-            "resolved": False
+            "resolved": False,
+            "method": "socket",
+            "service": get_service_name(port)
         }
     }
     

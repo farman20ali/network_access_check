@@ -3,7 +3,13 @@ import urllib.error
 import time
 from typing import Dict, Any
 
-def check_http_status(url: str, timeout: float = 5.0) -> Dict[str, Any]:
+def check_http_status(
+    url: str, 
+    timeout: float = 5.0, 
+    method: str = "GET", 
+    headers: Dict[str, str] = None, 
+    auth: tuple = None
+) -> Dict[str, Any]:
     """
     Validates the HTTP/HTTPS status code, response time, and size for a given URL.
     Identifies HTTP redirection and handles error codes gracefully.
@@ -28,10 +34,22 @@ def check_http_status(url: str, timeout: float = 5.0) -> Dict[str, Any]:
     
     start_time = time.perf_counter()
     try:
-        # Create request with a friendly user agent
+        req_headers = {'User-Agent': 'Mozilla/5.0 NetCheck/2.0'}
+        if headers:
+            for k, v in headers.items():
+                req_headers[k] = v
+                
+        if auth and len(auth) == 2:
+            import base64
+            auth_str = f"{auth[0]}:{auth[1]}"
+            auth_bytes = auth_str.encode('utf-8')
+            b64_auth = base64.b64encode(auth_bytes).decode('utf-8')
+            req_headers["Authorization"] = f"Basic {b64_auth}"
+            
         req = urllib.request.Request(
             target_url, 
-            headers={'User-Agent': 'Mozilla/5.0 NetCheck/2.0'}
+            headers=req_headers,
+            method=method.upper()
         )
         
         with urllib.request.urlopen(req, timeout=timeout) as response:

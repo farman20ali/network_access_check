@@ -1,26 +1,29 @@
 # Network Connectivity Checker (`netcheck`)
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)](#)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-60%20passed-brightgreen.svg)](#)
 
-A premium, cross-platform, production-grade **Network Intelligence Engine & CLI** written in pure Python 3. Overhauled from a legacy Bash tool into a zero-dependency Python engine with high-concurrency diagnostics, lenient target input normalisation, structured output (JSON/CSV/XML), and an integrated **Model Context Protocol (MCP) Server** for AI assistants.
+A premium, cross-platform, production-grade **Network Intelligence Engine & CLI** written in pure Python 3. Zero external dependencies. High-concurrency diagnostics, structured output (JSON/CSV/XML), watch/loop mode, shell completions, man page, and an integrated **Model Context Protocol (MCP) Server** for AI assistants.
 
 ---
 
 ## 🚀 Key Features
 
-- **Zero-Dependency Core** — Built on the Python standard library. No third-party packages required to run.
+- **Zero-Dependency Core** — Built entirely on the Python standard library. No `pip install` needed to run.
 - **Cross-Platform** — Native support for Linux, macOS, and Windows with consistent terminal output.
-- **Subcommand CLI** — Modular `tcp`, `dns`, `http`, `ssl`, `ping`, and `interfaces` subcommands.
+- **9 Subcommands** — Modular `tcp`, `dns`, `http`, `ssl`, `ping`, `interfaces`, `traceroute`, `scan`, `whois`.
+- **Watch Mode** — Any subcommand loops with `--watch` and configurable `--interval`.
 - **Structured Output** — Every check returns `--format text|json|csv|xml`.
+- **No-Color Mode** — `--no-color` and `NO_COLOR` env var support for CI/CD pipelines.
 - **MCP Server** — Turns `netcheck` into a local tool-server for Claude, ChatGPT, and other AI agents.
-- **Lenient Parsing** — Accepts CSVs, URLs, bracketed IPv6, IP ranges (`192.168.1.1-50`), CIDR (`10.0.0.0/24`), port lists (`80,443`), and port ranges (`8000-8100`).
+- **Lenient Parsing** — Accepts CSVs, URLs, bracketed IPv6, IP ranges (`192.168.1.1-50`), CIDR (`10.0.0.0/24`), port lists (`80,443`), port ranges (`8000-8100`), and `ip:port` notation.
 - **Concurrent Batch Checks** — Configurable thread pools (`--jobs`, default 10) with real-time progress.
-- **DNS Caching** — Resolves each host once per run; subsequent checks reuse the cached result.
-- **IPv6 Dual-Stack TCP** — Tries all resolved IPs (IPv4 + IPv6) until one connects.
-- **SSL Inspection Fallback** — Uses the `cryptography` library to inspect certificate metadata even when strict TLS validation fails.
+- **Environment Variables** — `NETCHECK_TIMEOUT`, `NETCHECK_MAX_WORKERS`, `NO_COLOR` for scripting.
+- **Shell Completions** — Bash and Zsh tab completion for all subcommands and flags.
+- **Man Page** — Full `man netcheck` documentation installed by `install.sh`.
 
 ---
 
@@ -30,54 +33,45 @@ A premium, cross-platform, production-grade **Network Intelligence Engine & CLI*
 ```bash
 pip install netcheckx
 ```
-> **Note:** Package name is `netcheckx` (to avoid PyPI conflict), but you can use either command:
+> **Note:** Package name is `netcheckx` (to avoid PyPI conflict). Both commands work:
 ```bash
 netcheck --help          # Works
 netcheckx --help         # Also works (alias)
 ```
-> ⚠️ **Important:** Only install `netcheckx` OR `netcheck` from PyPI, not both (they're the same package with different names). Use `netcheckx` to get the latest version with full PyPI support.
 
-### Option 2: Local `pip` (development)
-```bash
-pip install .
-# or system-wide:
-sudo pip install .
-```
-
-### Option 3: Snap Store (Linux)
+### Option 2: Snap Store (Linux)
 ```bash
 sudo snap install netcheck
 sudo snap connect netcheck:network-observe   # enables ping & interfaces
 ```
 
-### Option 4: Debian package (`.deb`)
+### Option 3: Debian package (`.deb`)
 ```bash
-sudo dpkg -i netcheck_2.0.0_amd64.deb
+sudo dpkg -i netcheck_2.2.0_amd64.deb
 ```
 
-### Option 5: Chocolatey (Windows)
+### Option 4: Chocolatey (Windows)
 ```powershell
 choco install netcheck
 ```
 
-### Option 6: macOS `.pkg`
-Double-click the downloaded `.pkg` file, or:
+### Option 5: macOS `.pkg`
 ```bash
-sudo installer -pkg netcheck-2.0.0.pkg -target /
+sudo installer -pkg netcheck-2.2.0.pkg -target /
+```
+
+### Option 6: Linux installer (with shell completions + man page)
+```bash
+git clone https://github.com/farman20ali/network_access_check.git
+cd network_access_check
+sudo bash packaging/linux/install.sh
 ```
 
 ### Option 7: Developer / local run (no install)
 ```bash
-# 1. Clone the repo
 git clone https://github.com/farman20ali/network_access_check.git
 cd network_access_check
-
-# 2. Install dev dependencies
-pip install -r python-requirements.txt
-# or
 pip install -e ".[dev]"
-
-# 3. Run directly
 python3 -m netcheck --help
 ```
 
@@ -89,12 +83,42 @@ python3 -m netcheck --help
 
 | Subcommand | Description | Example |
 |---|---|---|
-| `tcp` | TCP port reachability | `netcheck tcp google.com 80,443` |
-| `dns` | DNS hostname resolution | `netcheck dns github.com` |
-| `http` | HTTP/HTTPS status + latency | `netcheck http https://google.com` |
-| `ssl` | SSL certificate inspection | `netcheck ssl google.com` |
-| `ping` | ICMP ping with RTT stats | `netcheck ping 8.8.8.8` |
+| `tcp` | TCP port reachability (ranges, CIDR, IP ranges) | `netcheck tcp google.com 80,443` |
+| `dns` | DNS A/AAAA resolution + CNAME aliases | `netcheck dns github.com` |
+| `http` | HTTP/HTTPS status, size, latency, redirects | `netcheck http https://google.com` |
+| `ssl` | SSL certificate + TLS version/cipher/fingerprint | `netcheck ssl google.com -V` |
+| `ping` | ICMP ping with min/avg/max RTT stats | `netcheck ping 8.8.8.8 -c 10` |
 | `interfaces` | Active network interfaces + public IP | `netcheck interfaces --all` |
+| `ports` | Local listening sockets with process/PID (Docker-aware) | `netcheck ports -f json` |
+| `traceroute` | Hop-by-hop network path trace | `netcheck traceroute 8.8.8.8 -m 20` |
+| `scan` | Concurrent TCP port scanner with service names | `netcheck scan 192.168.1.1 --ports 1-1024` |
+| `whois` | RDAP/WHOIS domain or IP registration lookup | `netcheck whois google.com` |
+
+### Watch Mode
+
+Any subcommand can be looped with `--watch`:
+```bash
+netcheck tcp google.com 443 --watch --interval 2    # Refresh every 2s
+netcheck http https://api.example.com -w -i 5        # Watch HTTP every 5s
+netcheck dns github.com -w                           # Watch DNS (default 2s interval)
+```
+Press `Ctrl+C` to stop.
+
+### HTTP Subcommand Options
+
+```bash
+netcheck http https://api.example.com \
+  --method POST \
+  -H "Authorization: Bearer token123" \
+  -H "Accept: application/json" \
+  --auth user:pass
+```
+
+| Flag | Description |
+|---|---|
+| `-X, --method` | HTTP method: `GET` (default), `HEAD`, `POST`, `PUT`, `DELETE`, `PATCH` |
+| `-H, --header` | Custom header `Key: Value` (repeatable) |
+| `--auth` | Basic auth `user:pass` |
 
 ### Global Flags
 
@@ -105,8 +129,25 @@ python3 -m netcheck --help
 | `-f, --format` | `text` | Output format: `text`, `json`, `csv`, `xml` |
 | `--retry` | `1` | Number of connection attempts |
 | `--retry-delay` | `1` | Delay between retries (seconds) |
-| `-c, --count` | `4` | Ping packet count (`ping` subcommand only) |
+| `-V, --verbose` | — | Show extended details (headers, SANs, cipher info) |
+| `--no-color` | — | Disable ANSI color output |
+| `-w, --watch` | — | Enable watch/loop mode |
+| `-i, --interval` | `2.0` | Watch refresh interval in seconds |
 | `-v, --version` | — | Print version and exit |
+
+### Environment Variables
+
+| Variable | Effect |
+|---|---|
+| `NETCHECK_TIMEOUT` | Override default connection timeout (float) |
+| `NETCHECK_MAX_WORKERS` | Override default thread pool size (integer) |
+| `NO_COLOR` | Disable ANSI color output (standard, https://no-color.org/) |
+| `NETCHECK_NO_COLOR` | Alternative for disabling color |
+
+```bash
+NETCHECK_TIMEOUT=10 NETCHECK_MAX_WORKERS=50 netcheck scan 192.168.1.1
+NO_COLOR=1 netcheck ssl google.com -f json
+```
 
 ### Legacy Flags (kept for backward compatibility)
 
@@ -121,9 +162,35 @@ python3 -m netcheck --help
 
 ---
 
+## 🔍 Traceroute & Port Scan
+
+### Traceroute
+```bash
+netcheck traceroute google.com             # Full path
+netcheck traceroute 8.8.8.8 -m 15        # Limit to 15 hops
+netcheck traceroute github.com -f json    # JSON output
+```
+Uses raw ICMP sockets if run as root; otherwise falls back to system `traceroute`/`tracepath` (Linux/macOS) or `tracert` (Windows).
+
+### Port Scan
+```bash
+netcheck scan 192.168.1.1                  # Scan ~44 common ports
+netcheck scan google.com --ports 80,443,8080
+netcheck scan 10.0.0.1 --ports 1-1024 --jobs 100
+```
+
+### WHOIS / RDAP Lookup
+```bash
+netcheck whois google.com      # Domain registrar + creation date
+netcheck whois 8.8.8.8         # IP network block + organization
+```
+Uses modern RDAP (HTTP JSON API) first; falls back to classic WHOIS port 43.
+
+---
+
 ## 🤖 MCP Server
 
-`netcheck` ships an integrated [Model Context Protocol](https://modelcontextprotocol.io/) server.
+`netcheck` ships an integrated [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes all diagnostic functions to AI assistants.
 
 ```bash
 netcheck --mcp
@@ -144,7 +211,20 @@ python3 -m netcheck.mcp.server
 }
 ```
 
-**Exposed MCP tools:** `dns_lookup`, `ping_host`, `check_tcp_port`, `check_http_status`, `check_ssl_certificate`, `list_interfaces`.
+**Exposed MCP tools (v2.2.0):**
+
+| Tool | Description |
+|---|---|
+| `check_tcp_connectivity` | TCP port reachability |
+| `dns_lookup` | DNS A/AAAA resolution |
+| `check_http_status` | HTTP response check |
+| `check_ssl_certificate` | SSL certificate validation |
+| `ping_host` | ICMP ping |
+| `get_network_interfaces` | List local interfaces |
+| `get_public_ip` | Get public IP |
+| `traceroute` | Trace network path |
+| `scan_ports` | TCP port scanner |
+| `whois_lookup` | Domain/IP registration |
 
 ---
 
@@ -156,7 +236,7 @@ All packaging is orchestrated by [`build_packages.py`](build_packages.py). Templ
 packaging/
 ├── chocolatey/        ← Windows Chocolatey (.nupkg)
 │   └── tools/
-├── linux/             ← install.sh / uninstall.sh
+├── linux/             ← install.sh / uninstall.sh / netcheck.1 / completions
 ├── macos/             ← macOS .pkg scripts
 ├── snap/              ← snapcraft.yaml template
 └── windows/           ← NSIS installer script (.nsi)
@@ -169,7 +249,7 @@ packaging/
 python3 build_packages.py --check
 
 # Sync a new version across all config files
-python3 build_packages.py --sync-version 2.1.0
+python3 build_packages.py --sync-version 2.2.0
 
 # Build all packages for the current OS
 python3 build_packages.py --all
@@ -177,14 +257,76 @@ python3 build_packages.py --all
 # Individual targets
 python3 build_packages.py --pypi      # wheel + sdist
 python3 build_packages.py --deb       # Debian .deb
-python3 build_packages.py --rpm       # RPM
 python3 build_packages.py --snap      # Snap .snap
-python3 build_packages.py --linux     # standalone binary (PyInstaller)
 python3 build_packages.py --win       # Windows .exe + NSIS + Chocolatey
 python3 build_packages.py --mac       # macOS binary + .pkg
 ```
 
-All output lands in `dist/<target>/`.
+---
+
+## 🔧 Shell Completions
+
+### Bash
+```bash
+# System-wide (requires root)
+sudo cp packaging/linux/netcheck.bash-completion /etc/bash_completion.d/netcheck
+
+# Per-user
+mkdir -p ~/.local/share/bash-completion/completions
+cp packaging/linux/netcheck.bash-completion ~/.local/share/bash-completion/completions/netcheck
+```
+
+### Zsh
+```bash
+mkdir -p ~/.zsh/completions
+cp packaging/linux/netcheck.zsh-completion ~/.zsh/completions/_netcheck
+# Add to ~/.zshrc:
+echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+echo 'autoload -U compinit && compinit' >> ~/.zshrc
+```
+
+The installer script (`packaging/linux/install.sh`) does all of this automatically.
+
+---
+
+## ⚙️ CI/CD Integration
+
+All subcommands produce **machine-readable structured JSON** output when `-f json` is set. Use this to build health-gate scripts, monitoring alerts, or GitHub Actions checks:
+
+```bash
+# Check if a TCP port is open — fail the step if not
+netcheck tcp prod.example.com 443 -f json | python3 -c \
+  "import sys, json; d=json.load(sys.stdin); sys.exit(0 if d['results'][0]['status']=='success' else 1)"
+
+# Extract DNS IPs with jq
+netcheck dns api.example.com -f json | jq '.ips[]'
+
+# List open ports as JSON array
+netcheck scan 192.168.1.1 --ports 1-1024 -f json | jq '.open_ports[] | {port, service}'
+
+# Get SSL days-until-expiry, alert if < 30
+netcheck ssl prod.example.com -f json | jq -e '.days_until_expiry > 30'
+
+# Traceroute hop count for latency monitoring
+netcheck traceroute 8.8.8.8 -f json | jq '.hops | length'
+
+# Listening ports as CSV for spreadsheet import
+netcheck ports -f csv > listening_ports.csv
+
+# Use NO_COLOR to suppress ANSI in logs
+NO_COLOR=1 netcheck tcp prod.example.com 443
+
+# Override timeout and workers for fast CI checks
+NETCHECK_TIMEOUT=3 NETCHECK_MAX_WORKERS=50 netcheck scan 10.0.0.1 --ports 80,443,8080 -f json
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|---|---|
+| `0` | All checks succeeded |
+| `1` | One or more checks failed |
+| `2` | Argument / usage error |
 
 ---
 
@@ -195,10 +337,10 @@ All output lands in `dist/<target>/`.
 make test
 
 # Using pytest directly
-python3 -m pytest tests/ -v
+PYTHONPATH=. python3 -m pytest tests/ -v
 
 # With coverage
-python3 -m pytest tests/ --cov=netcheck --cov-report=term-missing
+PYTHONPATH=. python3 -m pytest tests/ --cov=netcheck --cov-report=term-missing
 ```
 
 ---
@@ -211,16 +353,17 @@ network_access_check/
 │   ├── __init__.py            ← version string
 │   ├── __main__.py            ← python3 -m netcheck entry point
 │   ├── cli.py                 ← CLI argument parsing & dispatch
-│   ├── mcp/                   ← MCP server
-│   ├── modules/               ← dns, tcp, http, ssl, ping, interfaces
-│   └── utils/                 ← formatters, retry, concurrency helpers
+│   ├── mcp/                   ← MCP server + tool definitions
+│   ├── modules/               ← dns, tcp, http, ssl, ping, interfaces,
+│   │                             traceroute, port_scanner, whois
+│   └── utils/                 ← formatters, retry, concurrency, services
 ├── packaging/                 ← Platform packaging templates
 │   ├── chocolatey/
-│   ├── linux/
+│   ├── linux/                 ← install.sh, netcheck.1, bash/zsh completions
 │   ├── macos/
 │   ├── snap/
 │   └── windows/
-├── tests/                     ← pytest test suite
+├── tests/                     ← pytest test suite (60 tests)
 ├── docs/                      ← Guides and release notes
 ├── .github/workflows/         ← CI (ci.yml) + Release (release.yml)
 ├── build_packages.py          ← Build orchestration script

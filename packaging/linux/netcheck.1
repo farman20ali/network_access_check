@@ -1,0 +1,190 @@
+.TH NETCHECK 1 "June 2026" "version 2.2.0" "Network Intelligence Engine"
+.SH NAME
+netcheck \- cross-platform network diagnostics, connectivity checks, and path analysis
+.SH SYNOPSIS
+.B netcheck
+\fISUBCOMMAND\fR [\fIARGS\fR]
+.br
+.B netcheck
+[\fIOPTIONS\fR] [\fIinput_file\fR]
+.SH DESCRIPTION
+.B netcheck
+is a zero-dependency, cross-platform, production-grade network diagnostic engine.
+It resolves DNS, tests TCP connectivity, validates HTTP responses, inspects SSL/TLS certificates,
+pings hosts, lists active interfaces, traces network routes, performs port scans,
+and looks up domain/IP registration details.
+.P
+Supports JSON/CSV/XML structured output, watch/loop mode, concurrent bulk checks via thread pools,
+CIDR and IP range expansion, and an integrated Model Context Protocol (MCP) server for AI assistants.
+.SH SUBCOMMANDS
+.TP
+.B tcp \fIhost\fR \fIport\fR
+Check TCP port reachability. Supports port lists (80,443) and ranges (8000-8010).
+Respects IP ranges (192.168.1.1-50) and CIDR subnets (10.0.0.0/24).
+.TP
+.B dns \fIhost\fR
+Resolve DNS A/AAAA records for a hostname. Reports IP addresses, CNAME aliases, and reverse DNS.
+.TP
+.B http \fIurl\fR
+Inspect HTTP/HTTPS response: status code, redirect chain, content size, and latency.
+Supports custom methods (\fB--method\fR), headers (\fB-H\fR), and Basic Authentication (\fB--auth\fR).
+.TP
+.B ssl \fIhost\fR [\fIport\fR]
+Inspect the SSL/TLS certificate of a host. Reports subject, issuer, validity dates, days until expiry,
+TLS version, cipher suite, and SHA-256 fingerprint. Default port is 443.
+.TP
+.B ping \fIhost\fR
+Ping a host using ICMP and display RTT statistics (min/avg/max) and packet loss.
+.TP
+.B interfaces
+List local network interfaces, their IPv4/IPv6 addresses, status (UP/DOWN), default gateway, and public IP.
+.TP
+.B ports
+List local listening TCP ports, identifying PIDs/processes and mapping to active Docker container names where applicable.
+.TP
+.B traceroute \fIhost\fR
+Trace the network path (hop-by-hop) to the destination. Uses raw ICMP sockets if permissions allow,
+otherwise falls back to the system
+.BR traceroute (8)
+/
+.BR tracepath (8)
+(Linux/macOS) or
+.BR tracert (1)
+(Windows).
+.TP
+.B scan \fIhost\fR
+Perform a concurrent TCP port scan on the target host. Defaults to a curated set of ~44 common ports.
+Use \fB--ports\fR to specify custom ports or ranges.
+.TP
+.B whois \fItarget\fR
+Look up registrar and registration details for a domain or IP using RDAP (HTTP JSON API).
+Falls back to a legacy WHOIS TCP socket query on port 43 if RDAP fails.
+.SH GLOBAL OPTIONS
+.TP
+.BR -t ", " --timeout " \fIsec\fR"
+Connection timeout per check in seconds (default: 5). Override with \fBNETCHECK_TIMEOUT\fR env var.
+.TP
+.BR -j ", " --jobs " \fInum\fR"
+Maximum concurrent threads for batch TCP checks (default: 10). Override with \fBNETCHECK_MAX_WORKERS\fR env var.
+.TP
+.BR -f ", " --format " \fIfmt\fR"
+Output format: \fBtext\fR (default), \fBjson\fR, \fBcsv\fR, \fBxml\fR.
+.TP
+.BR -V ", " --verbose
+Verbose output: shows extended details such as response headers, SANs, and raw WHOIS data.
+.TP
+.BR --no-color
+Disable ANSI color codes in output. Also honoured via \fBNO_COLOR\fR and \fBNETCHECK_NO_COLOR\fR env vars.
+.TP
+.BR -w ", " --watch
+Enable watch/loop mode: repeats the check at a regular interval until Ctrl+C.
+.TP
+.BR -i ", " --interval " \fIsec\fR"
+Refresh interval for watch mode in seconds (default: 2.0).
+.TP
+.BR --retry " \fIcount\fR"
+Number of connection attempts per target (default: 1).
+.TP
+.BR --retry-delay " \fIsec\fR"
+Delay between retry attempts in seconds (default: 1.0).
+.SH HTTP SUBCOMMAND OPTIONS
+.TP
+.BR -X ", " --method " \fIMETHOD\fR"
+HTTP request method: GET (default), HEAD, POST, PUT, DELETE, PATCH.
+.TP
+.BR -H ", " --header " \fI'Key: Value'\fR"
+Add a custom HTTP request header. Repeatable.
+.TP
+.BR --auth " \fIuser:pass\fR"
+HTTP Basic Authentication credentials.
+.SH TRACEROUTE SUBCOMMAND OPTIONS
+.TP
+.BR -m ", " --max-hops " \fInum\fR"
+Maximum number of hops to trace (default: 30).
+.SH SCAN SUBCOMMAND OPTIONS
+.TP
+.BR -p ", " --ports " \fIspec\fR"
+Comma-separated port list or range (e.g. 80,443 or 80-1024). Defaults to ~44 common ports.
+.SH LEGACY OPTIONS
+.TP
+.BR -q ", " --quick " \fIhost\fR \fIport\fR"
+Quick TCP connection test (equivalent to: netcheck tcp).
+.TP
+.BR -d ", " --dns " \fIhost\fR"
+DNS lookup (equivalent to: netcheck dns).
+.TP
+.BR -p ", " --ping " \fIhost\fR"
+Ping host (equivalent to: netcheck ping).
+.TP
+.BR -s ", " --status " \fIurl\fR"
+HTTP status check (equivalent to: netcheck http).
+.TP
+.BR --cert " \fIhost\fR"
+SSL certificate check (equivalent to: netcheck ssl).
+.TP
+.BR --my-ip ", " -ip
+List network interfaces (equivalent to: netcheck interfaces).
+.TP
+.BR --mcp
+Start the integrated Model Context Protocol (MCP) JSON-RPC stdio server.
+.SH ENVIRONMENT VARIABLES
+.TP
+.B NETCHECK_TIMEOUT
+Overrides the default connection timeout (float, seconds).
+.TP
+.B NETCHECK_MAX_WORKERS
+Overrides the default parallel thread pool size (integer).
+.TP
+.B NO_COLOR
+If set to any value, disables ANSI color output (per https://no-color.org/).
+.TP
+.B NETCHECK_NO_COLOR
+Alternative to NO_COLOR for disabling color output.
+.SH EXAMPLES
+.TP
+Quick TCP check:
+.B netcheck tcp google.com 443
+.TP
+DNS lookup with JSON output:
+.B netcheck dns github.com -f json
+.TP
+HTTP check with custom method and header:
+.B netcheck http https://api.example.com -X POST -H "Authorization: Bearer token"
+.TP
+SSL certificate with full cipher details:
+.B netcheck ssl google.com -V
+.TP
+Traceroute with limited hops:
+.B netcheck traceroute 8.8.8.8 -m 15
+.TP
+Port scan with custom range:
+.B netcheck scan 192.168.1.1 --ports 1-1024 --jobs 100
+.TP
+WHOIS lookup for a domain:
+.B netcheck whois google.com
+.TP
+Watch TCP connection every 2 seconds:
+.B netcheck tcp 8.8.8.8 443 --watch --interval 2
+.TP
+Show active network interfaces:
+.B netcheck interfaces
+.TP
+Show active listening ports and services:
+.B netcheck ports
+.TP
+Batch check from file:
+.B netcheck -t 10 -j 20 hosts.txt
+.TP
+Start MCP Server:
+.B netcheck --mcp
+.SH SEE ALSO
+.BR traceroute (8),
+.BR ping (8),
+.BR nmap (1),
+.BR curl (1)
+.SH AUTHOR
+Alien Hub <alienhub.dev@gmail.com>
+.P
+Source: https://github.com/farman20ali/network_access_check
+.SH LICENSE
+GNU General Public License v3.0 (GPL-3.0).

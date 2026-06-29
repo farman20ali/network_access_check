@@ -70,25 +70,43 @@ def dns_lookup(raw_target: str, timeout: float = 5.0) -> Dict[str, Any]:
     start_time = time.perf_counter()
     try:
         def _resolve():
-            return socket.getaddrinfo(host, None)
+            try:
+                ai = socket.getaddrinfo(host, None, flags=socket.AI_CANONNAME)
+            except Exception:
+                ai = socket.getaddrinfo(host, None)
             
-        addr_info = run_with_timeout(timeout, _resolve)
+            aliases = []
+            try:
+                _, alias_list, _ = socket.gethostbyname_ex(host)
+                aliases = list(alias_list)
+            except Exception:
+                pass
+            return ai, aliases
+            
+        addr_info, aliases = run_with_timeout(timeout, _resolve)
         duration_ms = (time.perf_counter() - start_time) * 1000.0
         
         ips = list(set(info[4][0] for info in addr_info))
+        
+        for info in addr_info:
+            if len(info) > 3 and info[3]:
+                canon = info[3]
+                if canon != host and canon not in aliases:
+                    aliases.append(canon)
+                    
         result["status"] = "SUCCESS"
         result["success"] = True
         result["latency_ms"] = round(duration_ms, 2)
         result["metadata"]["ips"] = ips
+        result["metadata"]["aliases"] = aliases
         
         if ips:
             try:
                 def _reverse():
-                    name, aliases, _ = socket.gethostbyaddr(ips[0])
-                    return name, aliases
-                rev_name, aliases = run_with_timeout(2.0, _reverse)
+                    name, _, _ = socket.gethostbyaddr(ips[0])
+                    return name
+                rev_name = run_with_timeout(2.0, _reverse)
                 result["metadata"]["reverse_dns"] = rev_name
-                result["metadata"]["aliases"] = aliases
             except Exception:
                 pass
                 

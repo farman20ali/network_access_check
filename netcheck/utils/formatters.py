@@ -95,6 +95,50 @@ def format_json(results: List[Dict[str, Any]]) -> str:
                 "latency_ms": res.get("latency_ms"),
                 **meta
             }, indent=2)
+        # 6. Local Listening Ports
+        elif res.get("target") == "ports" or "listening_ports" in meta:
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "ports",
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "listening_ports": meta.get("listening_ports", [])
+            }, indent=2)
+        # 7. Port Scanner
+        elif "open_ports" in meta:
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "scan",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "ips": meta.get("ips", []),
+                "open_ports": meta.get("open_ports", []),
+                "closed_ports": meta.get("closed_ports", [])
+            }, indent=2)
+        # 8. Traceroute
+        elif "hops" in meta:
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "traceroute",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "hops": meta.get("hops", [])
+            }, indent=2)
+        # 9. WHOIS / RDAP
+        elif "rdap_source" in meta:
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "check_type": "whois",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "rdap_type": meta.get("type", ""),
+                "rdap_source": meta.get("rdap_source", ""),
+                "registrar": meta.get("registrar", ""),
+                "creation_date": meta.get("creation_date", "")
+            }, indent=2)
 
     # Default legacy TCP connect check format
     all_success = all(r.get("success", False) for r in results) if results else True
@@ -109,7 +153,7 @@ def format_json(results: List[Dict[str, Any]]) -> str:
             port = 0
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if r.get("success", False):
-            method = r.get("metadata", {}).get("method", "netcat")
+            method = r.get("metadata", {}).get("method", "socket")
             formatted_results.append({
                 "status": "success",
                 "host": host,
@@ -235,6 +279,71 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
                 res.get("error") or ""
             ])
             return output.getvalue()
+        # 6. Local Listening Ports
+        elif res.get("target") == "ports" or "listening_ports" in meta:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Proto", "Address", "Port", "Process", "PID"])
+            for p in meta.get("listening_ports", []):
+                writer.writerow([
+                    p.get("proto", "TCP"),
+                    p.get("address", "*"),
+                    p.get("port", ""),
+                    p.get("process", ""),
+                    p.get("pid", "")
+                ])
+            return output.getvalue()
+        # 7. Port Scanner
+        elif "open_ports" in meta:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Port", "Status", "Service", "Latency_MS"])
+            for p in meta.get("open_ports", []):
+                writer.writerow([
+                    res.get("target"),
+                    p.get("port", ""),
+                    "OPEN",
+                    p.get("service", ""),
+                    p.get("latency_ms") if p.get("latency_ms") is not None else "N/A"
+                ])
+            for p in meta.get("closed_ports", []):
+                writer.writerow([
+                    res.get("target"),
+                    p.get("port", ""),
+                    "CLOSED",
+                    p.get("service", ""),
+                    "N/A"
+                ])
+            return output.getvalue()
+        # 8. Traceroute
+        elif "hops" in meta:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Hop", "IP", "Hostname", "Latency_MS"])
+            for h in meta.get("hops", []):
+                writer.writerow([
+                    res.get("target"),
+                    h.get("hop", ""),
+                    h.get("ip", "*"),
+                    h.get("name", "*"),
+                    h.get("latency_ms") if h.get("latency_ms") is not None else "*"
+                ])
+            return output.getvalue()
+        # 9. WHOIS / RDAP
+        elif "rdap_source" in meta:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Type", "Source", "Registrar", "Creation_Date", "Success", "Error"])
+            writer.writerow([
+                res.get("target"),
+                meta.get("type", ""),
+                meta.get("rdap_source", ""),
+                meta.get("registrar", ""),
+                meta.get("creation_date", ""),
+                "SUCCESS" if res.get("success", False) else "FAILED",
+                res.get("error") or ""
+            ])
+            return output.getvalue()
 
     # Default legacy TCP connect check format
     output = io.StringIO()
@@ -248,7 +357,7 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
         for r in results:
             host = r.get("metadata", {}).get("host", r.get("target", "").split(":")[0])
             port = r.get("metadata", {}).get("port", r.get("target", "").split(":")[-1])
-            method = r.get("metadata", {}).get("method", "netcat")
+            method = r.get("metadata", {}).get("method", "socket")
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             writer.writerow(["SUCCESS", host, port, method, timestamp])
     elif all_fail and results:
@@ -265,7 +374,7 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
             host = r.get("metadata", {}).get("host", r.get("target", "").split(":")[0])
             port = r.get("metadata", {}).get("port", r.get("target", "").split(":")[-1])
             status = "SUCCESS" if r.get("success", False) else "FAILED"
-            method_reason = r.get("metadata", {}).get("method", "netcat") if r.get("success", False) else (r.get("error", "timeout") or "timeout")
+            method_reason = r.get("metadata", {}).get("method", "socket") if r.get("success", False) else (r.get("error", "timeout") or "timeout")
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             writer.writerow([status, host, port, method_reason, timestamp])
     return output.getvalue()
@@ -362,6 +471,61 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
                 ET.SubElement(root, "error").text = res.get("error")
             xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
             return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 6. Local Listening Ports
+        elif res.get("target") == "ports" or "listening_ports" in meta:
+            root = ET.Element("listening_ports", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                              success=str(res.get("success", False)).lower())
+            for p in meta.get("listening_ports", []):
+                ET.SubElement(root, "port",
+                              proto=str(p.get("proto", "TCP")),
+                              address=str(p.get("address", "*")),
+                              port=str(p.get("port", "")),
+                              process=str(p.get("process", "")),
+                              pid=str(p.get("pid", "")))
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 7. Port Scanner
+        elif "open_ports" in meta:
+            root = ET.Element("port_scan", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                              target=str(res.get("target", "")),
+                              success=str(res.get("success", False)).lower())
+            ips_elem = ET.SubElement(root, "resolved_ips")
+            for ip in meta.get("ips", []):
+                ET.SubElement(ips_elem, "ip").text = ip
+            open_elem = ET.SubElement(root, "open_ports")
+            for p in meta.get("open_ports", []):
+                ET.SubElement(open_elem, "port",
+                              number=str(p.get("port", "")),
+                              service=str(p.get("service", "")),
+                              latency_ms=str(p.get("latency_ms", "")))
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 8. Traceroute
+        elif "hops" in meta:
+            root = ET.Element("traceroute", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                              target=str(res.get("target", "")),
+                              success=str(res.get("success", False)).lower())
+            for h in meta.get("hops", []):
+                ET.SubElement(root, "hop",
+                              number=str(h.get("hop", "")),
+                              ip=str(h.get("ip", "*")),
+                              name=str(h.get("name", "*")),
+                              latency_ms=str(h.get("latency_ms", "")))
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 9. WHOIS / RDAP
+        elif "rdap_source" in meta:
+            root = ET.Element("whois_lookup", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                              target=str(res.get("target", "")),
+                              success=str(res.get("success", False)).lower())
+            ET.SubElement(root, "type").text = meta.get("type", "")
+            ET.SubElement(root, "rdap_source").text = meta.get("rdap_source", "")
+            ET.SubElement(root, "registrar").text = meta.get("registrar", "") or ""
+            ET.SubElement(root, "creation_date").text = meta.get("creation_date", "") or ""
+            if res.get("error"):
+                ET.SubElement(root, "error").text = res.get("error")
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
 
     # Default legacy TCP connect check format
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -383,7 +547,7 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
         r_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         if r.get("success", False):
-            method = r.get("metadata", {}).get("method", "netcat")
+            method = r.get("metadata", {}).get("method", "socket")
             ET.SubElement(container, "connection", host=host, port=port, method=method, timestamp=r_time)
         else:
             reason = r.get("error", "timeout") or "timeout"
@@ -456,6 +620,37 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             else:
                 lines.append("  Unable to determine (no internet or curl/wget not available)")
             lines.append("")
+
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 1.5. Local Listening Ports formatter
+        elif target == "ports" or "listening_ports" in meta:
+            lines.append("Local Listening Ports & Services")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append("")
+
+            listening_ports = meta.get("listening_ports", [])
+            if listening_ports:
+                lines.append(f"🔓 {c['bold']}Active Listening Sockets:{c['reset']}")
+                lines.append("  Proto  Local Address                  Port   Process/Service (PID)")
+                lines.append("  ──────────────────────────────────────────────────────────────────")
+                for p in sorted(listening_ports, key=lambda x: x.get("port", 0)):
+                    proto = p.get("proto", "TCP")
+                    addr = p.get("address", "*")
+                    port = p.get("port", 0)
+                    proc = p.get("process", "Unknown")
+                    pid = p.get("pid", "")
+                    
+                    pid_str = f" ({pid})" if pid else ""
+                    proc_details = f"{proc}{pid_str}"
+                    
+                    lines.append(f"  {proto:<5}  {pad_right(addr, 30)} {port:<6} {proc_details}")
+                lines.append("")
+            else:
+                lines.append("No active listening ports found or failed to retrieve.")
+                lines.append("")
+
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             return "\n".join(lines)
             
@@ -596,6 +791,20 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             lines.append(f"│ Valid From: {pad_right(valid_from if valid_from else 'N/A', 31)} │")
             lines.append(f"│ Valid Until: {pad_right(valid_until if valid_until else 'N/A', 30)} │")
             lines.append(f"│ Days Until Expiry: {pad_right(str(days_until_expiry) if days_until_expiry is not None else 'N/A', 24)} │")
+            cipher = meta.get("cipher")
+            tls_version = meta.get("tls_version")
+            fingerprint = meta.get("fingerprint")
+            if tls_version or cipher or fingerprint:
+                lines.append("├─────────────────────────────────────────────┤")
+                lines.append("│ Connection Security Details:                 │")
+                lines.append("├─────────────────────────────────────────────┤")
+                if tls_version:
+                    lines.append(f"│ TLS Version: {pad_right(tls_version, 30)} │")
+                if cipher:
+                    lines.append(f"│ Cipher Suite: {pad_right(cipher, 29)} │")
+                if fingerprint:
+                    fp_short = f"{fingerprint[:16]}...{fingerprint[-16:]}"
+                    lines.append(f"│ SHA-256 FP: {pad_right(fp_short, 31)} │")
             lines.append("└─────────────────────────────────────────────┘")
             lines.append("")
             
@@ -632,7 +841,97 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             return "\n".join(lines)
             
-        # 6. Fallback default single-target box
+        # 6. TCP Connection Check Formatter
+        elif "port" in meta and not "valid_until" in meta and not "status_code" in meta:
+            lines.append(f"TCP Connection Test for: {target}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"Connecting to {target}...")
+            lines.append("")
+            
+            status_icon = f"{c['green']}✅ SUCCESS{c['reset']}" if success else f"{c['red']}❌ FAILED{c['reset']}"
+            service_name = meta.get("service", "")
+            ip_addr = meta.get("ip") or "Unknown"
+            
+            lines.append("┌─────────────────────────────────────────────┐")
+            lines.append(f"│ Host: {pad_right(target, 37)} │")
+            lines.append(f"│ Port: {pad_right(str(meta.get('port', '')), 37)} │")
+            if service_name:
+                lines.append(f"│ Service: {pad_right(service_name, 34)} │")
+            lines.append("├─────────────────────────────────────────────┤")
+            lines.append(f"│ Status: {pad_right(status_icon, 35)} │")
+            lines.append(f"│ IP Address: {pad_right(ip_addr, 31)} │")
+            lines.append(f"│ Latency: {pad_right(f'{latency}ms' if latency is not None else 'N/A', 34)} │")
+            if error:
+                err_str = str(error)
+                if len(err_str) > 35:
+                    err_str = err_str[:32] + "..."
+                lines.append(f"│ Reason: {pad_right(err_str, 35)} │")
+            lines.append("└─────────────────────────────────────────────┘")
+            lines.append("")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 7. Traceroute Formatter
+        elif "hops" in meta:
+            lines.append(f"Traceroute to: {target}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"{'Hop':3} {'IP Address':15} {'Hostname/Details':30} {'Latency'}")
+            lines.append("────────────────────────────────────────")
+            for h in meta.get("hops", []):
+                hop_num = h.get("hop")
+                ip = h.get("ip", "*")
+                name = h.get("name", "*")
+                latency = f"{h.get('latency_ms')} ms" if h.get('latency_ms') is not None else "*"
+                
+                name_str = name
+                if name_str == ip:
+                    name_str = ""
+                lines.append(f"{hop_num:<3} {pad_right(ip, 15)} {pad_right(name_str, 30)} {latency}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 8. Port Scanner Formatter
+        elif "open_ports" in meta:
+            lines.append(f"Port Scan for: {target}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"Scan complete. Resolved IPs: {', '.join(meta.get('ips', []))}")
+            lines.append("")
+            lines.append(f"📡 {c['bold']}Open Ports:{c['reset']}")
+            lines.append("────────────────────────────────────────")
+            open_ports = meta.get("open_ports", [])
+            if not open_ports:
+                lines.append("  No open ports found.")
+            else:
+                for p in open_ports:
+                    service = p.get("service")
+                    service_str = f"({service})" if service else ""
+                    latency = f"{p.get('latency_ms')} ms" if p.get('latency_ms') is not None else ""
+                    lines.append(f"  Port {p.get('port'):<5} - OPEN {service_str:<15} {latency}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 9. Whois/RDAP Formatter
+        elif "rdap_source" in meta:
+            lines.append(f"Registration/WHOIS Lookup for: {target}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"Type: {meta.get('type', 'UNKNOWN')}")
+            lines.append(f"Source: {meta.get('rdap_source', 'N/A')}")
+            if meta.get("registrar"):
+                lines.append(f"Registrar/Owner: {meta.get('registrar')}")
+            if meta.get("creation_date"):
+                lines.append(f"Creation Date: {meta.get('creation_date')}")
+            if meta.get("raw_whois"):
+                lines.append("")
+                lines.append("Raw WHOIS Data (Snippet):")
+                lines.append("────────────────────────────────────────")
+                snippet = "\n".join(meta.get("raw_whois", "").splitlines()[:20])
+                lines.append(snippet)
+                if len(meta.get("raw_whois", "").splitlines()) > 20:
+                    lines.append("...")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 10. Fallback default single-target box
         else:
             status_icon = f"{c['green']}✅ SUCCESS{c['reset']}" if success else f"{c['red']}❌ FAILED{c['reset']}"
             if status == "REDIRECT":
@@ -694,6 +993,9 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
                 details = f"HTTP {meta['status_code']}" + (f" -> {meta['redirect_url']}" if meta.get("redirect_url") else "")
             elif "days_until_expiry" in meta:
                 details = f"SSL expires in {meta['days_until_expiry']} days"
+            elif "port" in meta and not "valid_until" in meta:
+                service_str = f" ({meta['service']})" if meta.get("service") else ""
+                details = f"TCP port {meta['port']}{service_str}" + (f" - IP: {meta['ip']}" if meta.get("ip") else "")
             elif "ips" in meta:
                 details = f"IPs: {', '.join(meta['ips'][:3])}"
                 
@@ -701,7 +1003,9 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             
         lines.append("="*80)
         lines.append("Check Complete!")
-        lines.append(f"Total: {len(results)}  |  Successful: {successes}  |  Failed: {failures}")
+        latencies = [r["latency_ms"] for r in results if r.get("success", False) and r.get("latency_ms") is not None]
+        avg_latency = f"{sum(latencies)/len(latencies):.2f}ms" if latencies else "N/A"
+        lines.append(f"Total: {len(results)}  |  Successful: {successes}  |  Failed: {failures}  |  Avg Latency: {avg_latency}")
         lines.append("="*80)
         
     return "\n".join(lines)
