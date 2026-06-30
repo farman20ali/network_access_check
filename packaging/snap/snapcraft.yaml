@@ -57,12 +57,14 @@ description: |
 
   IMPORTANT: For full functionality, run after installation:
     sudo snap connect netcheck:network-observe
+    sudo snap connect netcheck:system-observe
 
-  This connection enables:
+  These connections enable:
   - ICMP ping tests (netcheck ping / -p flag)
   - Network interface enumeration (netcheck interfaces / --my-ip flag)
+  - Local listening ports with process mapping (netcheck ports)
 
-  Without this connection, TCP port tests, DNS lookup, HTTP status checks,
+  Without these connections, TCP port tests, DNS lookup, HTTP status checks,
   SSL certificate validation, and retry logic all work normally.
 
 grade: stable
@@ -82,6 +84,7 @@ apps:
       - network
       - network-bind
       - network-observe
+      - system-observe
       - home
     environment:
       LC_ALL: C.UTF-8

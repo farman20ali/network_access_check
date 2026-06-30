@@ -621,6 +621,13 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
                 lines.append("  Unable to determine (no internet or curl/wget not available)")
             lines.append("")
 
+            import os
+            if "SNAP" in os.environ and len(interfaces) == 1 and "default" in interfaces:
+                lines.append(f"⚠️  {c['yellow']}Running inside strict snap confinement. Complete interface list could not be read.{c['reset']}")
+                lines.append("   To resolve this, please run the following command to connect the plug:")
+                lines.append(f"   {c['bold']}sudo snap connect netcheck:network-observe{c['reset']}")
+                lines.append("")
+
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             return "\n".join(lines)
 
@@ -650,6 +657,13 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             else:
                 lines.append("No active listening ports found or failed to retrieve.")
                 lines.append("")
+                import os
+                if "SNAP" in os.environ:
+                    lines.append(f"⚠️  {c['yellow']}Running inside strict snap confinement.{c['reset']}")
+                    lines.append("   To query local listening ports, you must connect the plugs:")
+                    lines.append(f"   {c['bold']}sudo snap connect netcheck:network-observe{c['reset']}")
+                    lines.append(f"   {c['bold']}sudo snap connect netcheck:system-observe{c['reset']}")
+                    lines.append("")
 
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             return "\n".join(lines)
