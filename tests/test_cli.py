@@ -36,7 +36,23 @@ class TestNetCheckCLI(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 main()
             self.assertEqual(cm.exception.code, 0)
-            mock_get_interfaces.assert_called_once_with(all_interfaces=False)
+            mock_get_interfaces.assert_called_once_with(all_interfaces=False, include_public=False)
+
+    @patch('netcheck.cli.get_network_interfaces')
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_my_ip_with_public(self, mock_stdout, mock_get_interfaces):
+        mock_get_interfaces.return_value = {
+            "target": "interfaces",
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "metadata": {"interfaces": {}, "all_interfaces_shown": False}
+        }
+        with patch('sys.argv', ['netcheck', '--my-ip', '--public']):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 0)
+            mock_get_interfaces.assert_called_once_with(all_interfaces=False, include_public=True)
 
     @patch('netcheck.cli.run_check_with_retry')
     @patch('sys.stdout', new_callable=io.StringIO)
@@ -117,6 +133,33 @@ class TestNetCheckCLI(unittest.TestCase):
                 main()
             self.assertEqual(cm.exception.code, 0)
             mock_exec.assert_called_once()
+
+    @patch('sys.stderr', new_callable=io.StringIO)
+    def test_quick_flag_invalid_args(self, mock_stderr):
+        # 0 arguments to --quick
+        with patch('sys.argv', ['netcheck', '--quick']):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("Error: -q/--quick requires exactly 2 arguments", mock_stderr.getvalue())
+
+        # 1 argument to --quick
+        mock_stderr.truncate(0)
+        mock_stderr.seek(0)
+        with patch('sys.argv', ['netcheck', '--quick', 'localhost']):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("Error: -q/--quick requires exactly 2 arguments", mock_stderr.getvalue())
+
+        # 3 arguments to --quick
+        mock_stderr.truncate(0)
+        mock_stderr.seek(0)
+        with patch('sys.argv', ['netcheck', '--quick', 'localhost', '80', 'extra']):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("Error: -q/--quick requires exactly 2 arguments", mock_stderr.getvalue())
 
     @patch('netcheck.mcp.server.start_mcp_server')
     def test_mcp_flag(self, mock_start_mcp):
@@ -219,7 +262,23 @@ class TestNetCheckCLI(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 main()
             self.assertEqual(cm.exception.code, 0)
-            mock_get_interfaces.assert_called_once_with(all_interfaces=True)
+            mock_get_interfaces.assert_called_once_with(all_interfaces=True, include_public=False)
+
+    @patch('netcheck.cli.get_network_interfaces')
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_subcommand_interfaces_with_public(self, mock_stdout, mock_get_interfaces):
+        mock_get_interfaces.return_value = {
+            "target": "interfaces",
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "metadata": {"interfaces": {}, "all_interfaces_shown": True}
+        }
+        with patch('sys.argv', ['netcheck', 'interfaces', '--all', '--public']):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 0)
+            mock_get_interfaces.assert_called_once_with(all_interfaces=True, include_public=True)
 
 
 class TestCLITier4Features(unittest.TestCase):

@@ -125,6 +125,7 @@ OPTIONS:
     --cert <host>               Check SSL/TLS certificate validity and expiration
     --my-ip, -ip                Show all network interfaces and IP addresses (UP only)
     --my-ip --all               Show all interfaces including inactive ones
+    --public                    Fetch and show public IP address (for -ip / interfaces)
     --retry <number>            Retry failed connections N times (default: 1, no retry)
     --retry-delay <seconds>     Delay between retries in seconds (default: 1)
     --csv                       Input file is in CSV format (host,port)
@@ -243,12 +244,13 @@ def main():
     parser = NetCheckArgumentParser(add_help=False)
     parser.add_argument("-h", "--help", action="store_true")
     parser.add_argument("-v", "--version", action="store_true")
-    parser.add_argument("-q", "--quick", nargs=2)
+    parser.add_argument("-q", "--quick", nargs="*")
     parser.add_argument("-d", "--dns")
     parser.add_argument("-p", "--ping")
     parser.add_argument("-s", "--status")
     parser.add_argument("--cert")
     parser.add_argument("-ip", "--my-ip", action="store_true")
+    parser.add_argument("--public", action="store_true", help="Fetch and show public IP address")
     parser.add_argument("--mcp", action="store_true")
     parser.add_argument("--csv", action="store_true")
     parser.add_argument("-t", "--timeout", type=float, default=env_timeout)
@@ -287,7 +289,7 @@ def main():
     verbose = args.verbose
     
     if args.my_ip:
-        res = get_network_interfaces(all_interfaces=args.all)
+        res = get_network_interfaces(all_interfaces=args.all, include_public=args.public)
         print(format_output([res], fmt, verbose=verbose))
         sys.exit(0 if res["success"] else 1)
         
@@ -311,7 +313,11 @@ def main():
         print(format_output([res], fmt, verbose=verbose))
         sys.exit(0 if res["success"] else 1)
         
-    if args.quick:
+    if args.quick is not None:
+        if len(args.quick) != 2:
+            print("Error: -q/--quick requires exactly 2 arguments: <host> and <port> (e.g., netcheck -q google.com 443)\n", file=sys.stderr)
+            print("Usage: netcheck -q <host> <port>", file=sys.stderr)
+            sys.exit(1)
         host, port_str = args.quick
         run_quick_test(host, port_str, timeout, args.jobs, fmt, args.output, retries, retry_delay, verbose=verbose)
         return
@@ -386,6 +392,7 @@ def handle_subcommands(subcommand: str, sub_args: List[str], env_timeout: float 
         
     elif subcommand == "interfaces":
         parser.add_argument("--all", action="store_true")
+        parser.add_argument("--public", action="store_true", help="Fetch and show public IP address")
         args = parser.parse_args(sub_args)
         
     elif subcommand == "ports":
@@ -452,7 +459,7 @@ def handle_subcommands(subcommand: str, sub_args: List[str], env_timeout: float 
             print(format_output([res], args.format, verbose=args.verbose, use_color=use_color))
             return res["success"]
         elif subcommand == "interfaces":
-            res = get_network_interfaces(all_interfaces=args.all)
+            res = get_network_interfaces(all_interfaces=args.all, include_public=args.public)
             print(format_output([res], args.format, verbose=args.verbose, use_color=use_color))
             return res["success"]
         elif subcommand == "ports":

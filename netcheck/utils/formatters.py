@@ -617,8 +617,10 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             lines.append(f"🌍 {c['bold']}Public IP Address:{c['reset']}")
             if public_ip and public_ip != "Unknown":
                 lines.append(f"  {public_ip}")
-            else:
+            elif meta.get("public_ip_checked", False):
                 lines.append("  Unable to determine (no internet or curl/wget not available)")
+            else:
+                lines.append("  Not checked (use --public to retrieve)")
             lines.append("")
 
             import os

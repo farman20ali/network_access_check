@@ -26,19 +26,31 @@ def get_active_local_ip() -> str:
     finally:
         s.close()
 
-def get_public_ip(timeout: float = 3.0) -> str:
-    """Retrieves public IP address from public APIs."""
+def get_public_ip(timeout: float = 1.5) -> str:
+    """Retrieves public IP address from public APIs concurrently."""
     import urllib.request
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
     services = ["https://api.ipify.org", "https://ifconfig.me", "https://icanhazip.com"]
-    for service in services:
+    
+    def fetch_ip(url: str) -> Optional[str]:
         try:
-            req = urllib.request.Request(service, headers={'User-Agent': 'NetCheck/2.0'})
+            req = urllib.request.Request(url, headers={'User-Agent': 'NetCheck/2.0'})
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 ip = response.read().decode('utf-8').strip()
-                if ip:
+                if ip and (re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', ip) or ':' in ip):
                     return ip
         except Exception:
-            continue
+            pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(services)) as executor:
+        futures = {executor.submit(fetch_ip, url): url for url in services}
+        for fut in as_completed(futures):
+            res = fut.result()
+            if res:
+                return res
+                
     return "Unknown"
 
 def get_default_gateway() -> Tuple[Optional[str], Optional[str]]:
@@ -83,7 +95,7 @@ def get_default_gateway() -> Tuple[Optional[str], Optional[str]]:
         
     return None, None
 
-def get_network_interfaces(all_interfaces: bool = False, timeout: float = 3.0) -> Dict[str, Any]:
+def get_network_interfaces(all_interfaces: bool = False, include_public: bool = False, timeout: float = 1.5) -> Dict[str, Any]:
     """
     Identifies local network interfaces, their status, IPv4/IPv6 addresses,
     and flags the primary active connection.
@@ -131,7 +143,10 @@ def get_network_interfaces(all_interfaces: bool = False, timeout: float = 3.0) -
     gateway_ip, gateway_dev = get_default_gateway()
     
     # Get public IP
-    public_ip = get_public_ip(timeout=timeout)
+    if include_public and primary_ip != "127.0.0.1":
+        public_ip = get_public_ip(timeout=timeout)
+    else:
+        public_ip = "Unknown"
     
     # Filter active only if all_interfaces is False
     if not all_interfaces:
@@ -149,6 +164,7 @@ def get_network_interfaces(all_interfaces: bool = False, timeout: float = 3.0) -
             "gateway_ip": gateway_ip,
             "gateway_dev": gateway_dev,
             "public_ip": public_ip,
+            "public_ip_checked": include_public,
             "all_interfaces_shown": all_interfaces
         }
     }
