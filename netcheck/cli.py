@@ -129,6 +129,9 @@ OPTIONS:
     --retry <number>            Retry failed connections N times (default: 1, no retry)
     --retry-delay <seconds>     Delay between retries in seconds (default: 1)
     --csv                       Input file is in CSV format (host,port)
+    -f, --format <format>       Output format: text, json, csv, xml (default: text)
+    --json                      Output in JSON format (alias for -f json)
+    --show <filter>             Filter -q/tcp results: all (default), success, or fail
     -h, --help                  Show this help message
     -v, --version               Show version information
 
@@ -170,6 +173,11 @@ EXAMPLES:
     {cmd_name} ports                                # Subcommand ports/services mapping
     {cmd_name} tcp google.com 443 -w -i 1           # Watch TCP connection every 1s
     {cmd_name} -q 10.0.0.1-50 22                    # Quick test IP range
+    {cmd_name} -q 192.168.1.1 80,443 --show success  # Show only successful results
+    {cmd_name} -q 192.168.1.1 80,443 --show fail     # Show only failures
+    {cmd_name} -q 192.168.1.1 22 --json              # Quick test with JSON output
+    {cmd_name} -q 192.168.1.1 22 -o out.txt --show success  # Save only successes
+    {cmd_name} tcp 10.0.0.1-20 22 --show fail --json # Subcommand TCP with filters
     {cmd_name} -d google.com                        # Resolve DNS to IP
     {cmd_name} -p 8.8.8.8                           # Ping Google DNS
     {cmd_name} --my-ip                              # Show all network interfaces and IPs
@@ -256,6 +264,7 @@ def main():
     parser.add_argument("-t", "--timeout", type=float, default=env_timeout)
     parser.add_argument("-j", "--jobs", type=int, default=env_jobs)
     parser.add_argument("-f", "--format", default="text", choices=["text", "json", "csv", "xml"])
+    parser.add_argument("--json", action="store_true", help="Output in JSON format (alias for -f json)")
     parser.add_argument("-c", "--combined", action="store_true")
     parser.add_argument("-o", "--output")
     parser.add_argument("--retry", type=int, default=1)
@@ -263,6 +272,8 @@ def main():
     parser.add_argument("-V", "--verbose", action="store_true")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--no-color", action="store_true", default=env_no_color, help="Disable ANSI color output")
+    parser.add_argument("--show", default="all", choices=["all", "success", "fail"],
+                        help="Filter results to show: all (default), success, or fail")
     parser.add_argument("input_file", nargs="?")
     
     args, unknown = parser.parse_known_args()
@@ -282,11 +293,12 @@ def main():
         return
         
     # Apply format and parameters
-    fmt = args.format
+    fmt = "json" if args.json else args.format
     timeout = args.timeout
     retries = args.retry
     retry_delay = args.retry_delay
     verbose = args.verbose
+    show_filter = args.show
     
     if args.my_ip:
         res = get_network_interfaces(all_interfaces=args.all, include_public=args.public)
@@ -319,7 +331,7 @@ def main():
             print("Usage: netcheck -q <host> <port>", file=sys.stderr)
             sys.exit(1)
         host, port_str = args.quick
-        run_quick_test(host, port_str, timeout, args.jobs, fmt, args.output, retries, retry_delay, verbose=verbose)
+        run_quick_test(host, port_str, timeout, args.jobs, fmt, args.output, retries, retry_delay, verbose=verbose, show_filter=show_filter)
         return
         
     # Stdin or File Batch checks
@@ -353,6 +365,7 @@ def handle_subcommands(subcommand: str, sub_args: List[str], env_timeout: float 
     parser = argparse.ArgumentParser(prog=f"netcheck {subcommand}")
     parser.add_argument("-t", "--timeout", type=float, default=env_timeout)
     parser.add_argument("-f", "--format", default="text", choices=["text", "json", "csv", "xml"])
+    parser.add_argument("--json", action="store_true", help="Output in JSON format (alias for -f json)")
     parser.add_argument("--retry", type=int, default=1)
     parser.add_argument("--retry-delay", type=float, default=1.0)
     parser.add_argument("-V", "--verbose", action="store_true")
@@ -365,6 +378,8 @@ def handle_subcommands(subcommand: str, sub_args: List[str], env_timeout: float 
         parser.add_argument("port")
         parser.add_argument("-j", "--jobs", type=int, default=env_jobs)
         parser.add_argument("-o", "--output")
+        parser.add_argument("--show", default="all", choices=["all", "success", "fail"],
+                            help="Filter results: all (default), success, or fail")
         args = parser.parse_args(sub_args)
         
     elif subcommand == "dns":
@@ -419,11 +434,13 @@ def handle_subcommands(subcommand: str, sub_args: List[str], env_timeout: float 
 
     def execute_once() -> bool:
         use_color = None if not args.no_color else False
+        fmt = "json" if args.json else args.format
         if subcommand == "tcp":
             return run_quick_test(
-                args.host, args.port, args.timeout, args.jobs, 
-                args.format, args.output, args.retry, args.retry_delay, 
-                verbose=args.verbose, exit_on_complete=False
+                args.host, args.port, args.timeout, args.jobs,
+                fmt, args.output, args.retry, args.retry_delay,
+                verbose=args.verbose, exit_on_complete=False,
+                show_filter=getattr(args, "show", "all")
             )
         elif subcommand == "dns":
             res = run_check_with_retry(dns_lookup, (args.host, args.timeout), retries=args.retry, delay=args.retry_delay)
@@ -520,7 +537,7 @@ def handle_subcommands(subcommand: str, sub_args: List[str], env_timeout: float 
         success = execute_once()
         sys.exit(0 if success else 1)
 
-def run_quick_test(host: str, port_str: str, timeout: float, max_jobs: int, fmt: str, output_file: str, retries: int, retry_delay: float, verbose: bool = False, exit_on_complete: bool = True) -> bool:
+def run_quick_test(host: str, port_str: str, timeout: float, max_jobs: int, fmt: str, output_file: str, retries: int, retry_delay: float, verbose: bool = False, exit_on_complete: bool = True, show_filter: str = "all") -> bool:
     hosts = expand_ip_range(host)
     ports = expand_port_range(port_str)
     
@@ -537,14 +554,25 @@ def run_quick_test(host: str, port_str: str, timeout: float, max_jobs: int, fmt:
         
     results = execute_concurrent_checks(targets, timeout, max_jobs, retries, retry_delay, verbose=verbose)
     
-    output_str = format_output(results, fmt, verbose=verbose)
-    print(output_str)
+    # Apply result filter for display and file output
+    if show_filter == "success":
+        display_results = [r for r in results if r["success"]]
+    elif show_filter == "fail":
+        display_results = [r for r in results if not r["success"]]
+    else:
+        display_results = results
+
+    if display_results:
+        print(format_output(display_results, fmt, verbose=verbose))
+    else:
+        label = "successful" if show_filter == "success" else "failed"
+        print(f"No {label} results to display.")
     
     if output_file:
         try:
             with open(output_file, "w") as f:
-                f.write(format_output(results, fmt, verbose=verbose, use_color=False))
-            print(f"Results saved to: {output_file}")
+                f.write(format_output(display_results, fmt, verbose=verbose, use_color=False))
+            print(f"Results saved to: {output_file} ({len(display_results)} items)")
         except Exception as e:
             print(f"Error saving results to file {output_file}: {e}", file=sys.stderr)
             
