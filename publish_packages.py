@@ -197,7 +197,8 @@ def publish_chocolatey() -> None:
         cmd += ["--api-key", api_key]
     else:
         print("  ℹ️   CHOCO_API_KEY not set — you will be prompted for it.")
-
+        print("\n*********** powershell ************ \n either run command--> $env:CHOCO_API_KEY=\"YOUR_CHOCOLATEY_API_KEY\" \n or \n run command for user permanantly-->  [System.Environment]::SetEnvironmentVariable('CHOCO_API_KEY', 'YOUR_CHOCOLATEY_API_KEY', 'User')")
+        print("\n ************cmd *********** \n run command --> set CHOCO_API_KEY=YOUR_CHOCOLATEY_API_KEY")
     _run(cmd, "choco push → Chocolatey.org")
     print("🔗  View at: https://community.chocolatey.org/packages/netcheck")
 
