@@ -1,4 +1,4 @@
-.TH NETCHECK 1 "June 2026" "version 2.2.0" "Network Intelligence Engine"
+.TH NETCHECK 1 "July 2026" "version 2.3.0" "Network Intelligence Engine"
 .SH NAME
 netcheck \- cross-platform network diagnostics, connectivity checks, and path analysis
 .SH SYNOPSIS
@@ -37,7 +37,7 @@ TLS version, cipher suite, and SHA-256 fingerprint. Default port is 443.
 Ping a host using ICMP and display RTT statistics (min/avg/max) and packet loss.
 .TP
 .B interfaces
-List local network interfaces, their IPv4/IPv6 addresses, status (UP/DOWN), default gateway, and public IP.
+List local network interfaces, default gateway, and optionally resolve public IP via --public.
 .TP
 .B ports
 List local listening TCP ports, identifying PIDs/processes and mapping to active Docker container names where applicable.
@@ -69,6 +69,12 @@ Maximum concurrent threads for batch TCP checks (default: 10). Override with \fB
 .TP
 .BR -f ", " --format " \fIfmt\fR"
 Output format: \fBtext\fR (default), \fBjson\fR, \fBcsv\fR, \fBxml\fR.
+.TP
+.BR --json
+Output in JSON format (alias for -f json).
+.TP
+.BR --show " \fIfilter\fR"
+Filter TCP and quick test results: \fBall\fR (default), \fBsuccess\fR, or \fBfail\fR.
 .TP
 .BR -V ", " --verbose
 Verbose output: shows extended details such as response headers, SANs, and raw WHOIS data.
@@ -123,7 +129,7 @@ HTTP status check (equivalent to: netcheck http).
 SSL certificate check (equivalent to: netcheck ssl).
 .TP
 .BR --my-ip ", " -ip
-List network interfaces (equivalent to: netcheck interfaces).
+List network interfaces (equivalent to: netcheck interfaces). Supports --public to fetch public WAN IP.
 .TP
 .BR --mcp
 Start the integrated Model Context Protocol (MCP) JSON-RPC stdio server.

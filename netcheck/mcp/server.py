@@ -37,7 +37,7 @@ def start_mcp_server():
                         },
                         "serverInfo": {
                             "name": "netcheck",
-                            "version": "2.2.0"
+                            "version": "2.3.0"
                         }
                     }
                 }

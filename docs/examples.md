@@ -932,3 +932,112 @@ netcheck critical-services.txt --retry 3 --retry-delay 2 -j 20
 - `-c` - Combined reports
 
 **All features work together!**
+
+---
+
+## 18. v2.3.0 New Features
+
+### Public IP Resolution (`--public`)
+```bash
+# Show local interfaces + public WAN IP
+netcheck interfaces --public
+netcheck interfaces --all --public
+
+# Legacy flag
+netcheck --my-ip --public
+```
+
+Output (JSON):
+```json
+{
+  "type": "interfaces",
+  "public_ip": "203.0.113.45",
+  "public_ip_checked": true,
+  "interfaces": { ... }
+}
+```
+
+---
+
+### Output Filtering (`--show success|fail|all`)
+```bash
+# Only print hosts that are reachable
+netcheck tcp 192.168.1.1-50 22 --show success
+
+# Only print failures for audit/alert
+netcheck tcp 10.0.0.0/24 443 --show fail
+
+# Also works with legacy -q mode
+netcheck -q 192.168.1.1 80,443 --show success
+
+# Combine with JSON output
+netcheck tcp 192.168.1.1-10 80 --show fail --json
+```
+
+---
+
+### `--json` Flag Alias
+```bash
+# These are equivalent:
+netcheck tcp 10.0.0.1 80 -f json
+netcheck tcp 10.0.0.1 80 --json
+
+# Cleaner for piping:
+netcheck -q 192.168.1.1 443 --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['status'])"
+```
+
+---
+
+### Concurrent Ping for IP Ranges
+```bash
+# Ping a /24 subnet concurrently
+netcheck -p 192.168.1.1-254
+
+# Get JSON batch envelope
+netcheck -p 10.0.0.1-10 --json
+```
+
+JSON envelope for multi-host ping:
+```json
+{
+  "check_date": "2026-07-30 10:00:00",
+  "type": "ping",
+  "count": 10,
+  "results": [
+    { "target": "10.0.0.1", "success": true, "latency_ms": 1.2, "packets_sent": 4, "packets_received": 4, "packet_loss_pct": 0.0 },
+    { "target": "10.0.0.2", "success": false, "error": "host unreachable", "latency_ms": 0.0 }
+  ]
+}
+```
+
+---
+
+### Typed Result Detection in All Formats
+All output formats (JSON, CSV, XML) now use a consistent `type` field across all subcommands:
+
+| Subcommand | `type` field in JSON |
+|---|---|
+| `tcp` | `"tcp"` |
+| `dns` | `"dns"` |
+| `http` | `"http"` |
+| `ssl` | `"ssl"` |
+| `ping` | `"ping"` |
+| `interfaces` | `"interfaces"` |
+| `ports` | `"ports"` |
+| `traceroute` | `"traceroute"` |
+| `scan` | `"scan"` |
+| `whois` | `"whois"` |
+
+---
+
+### v2.3.0 CI/CD Examples
+```bash
+# Only alert on failures, in JSON
+netcheck tcp prod-hosts.txt --show fail --json | jq '.results[] | .target'
+
+# Get public IP in scripts
+PUBLIC_IP=$(netcheck interfaces --public -f json | python3 -c "import sys,json; print(json.load(sys.stdin).get('public_ip','unknown'))")
+
+# Ping a subnet and count failures
+netcheck -p 192.168.1.1-50 --json | jq '[.results[] | select(.success == false)] | length'
+```

@@ -1,10 +1,10 @@
 # Network Connectivity Checker (`netcheck`)
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)](#)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-60%20passed-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-68%20passed-brightgreen.svg)](#)
 
 A premium, cross-platform, production-grade **Network Intelligence Engine & CLI** written in pure Python 3. Zero external dependencies. High-concurrency diagnostics, structured output (JSON/CSV/XML), watch/loop mode, shell completions, man page, and an integrated **Model Context Protocol (MCP) Server** for AI assistants.
 
@@ -47,7 +47,7 @@ sudo snap connect netcheck:network-observe   # enables ping & interfaces
 
 ### Option 3: Debian package (`.deb`)
 ```bash
-sudo dpkg -i netcheck_2.2.0_amd64.deb
+sudo dpkg -i netcheck_2.3.0_amd64.deb
 ```
 
 ### Option 4: Chocolatey (Windows)
@@ -57,7 +57,7 @@ choco install netcheck
 
 ### Option 5: macOS `.pkg`
 ```bash
-sudo installer -pkg netcheck-2.2.0.pkg -target /
+sudo installer -pkg netcheck-2.3.0.pkg -target /
 ```
 
 ### Option 6: Linux installer (with shell completions + man page)
@@ -87,8 +87,8 @@ python3 -m netcheck --help
 | `dns` | DNS A/AAAA resolution + CNAME aliases | `netcheck dns github.com` |
 | `http` | HTTP/HTTPS status, size, latency, redirects | `netcheck http https://google.com` |
 | `ssl` | SSL certificate + TLS version/cipher/fingerprint | `netcheck ssl google.com -V` |
-| `ping` | ICMP ping with min/avg/max RTT stats | `netcheck ping 8.8.8.8 -c 10` |
-| `interfaces` | Active network interfaces + public IP | `netcheck interfaces --all` |
+| `ping` | ICMP ping with min/avg/max RTT stats; IP ranges run concurrently | `netcheck ping 8.8.8.8` |
+| `interfaces` | Active network interfaces + optional public IP (`--public`) | `netcheck interfaces --all --public` |
 | `ports` | Local listening sockets with process/PID (Docker-aware) | `netcheck ports -f json` |
 | `traceroute` | Hop-by-hop network path trace | `netcheck traceroute 8.8.8.8 -m 20` |
 | `scan` | Concurrent TCP port scanner with service names | `netcheck scan 192.168.1.1 --ports 1-1024` |
@@ -120,6 +120,23 @@ netcheck http https://api.example.com \
 | `-H, --header` | Custom header `Key: Value` (repeatable) |
 | `--auth` | Basic auth `user:pass` |
 
+### Interfaces / Public IP Options
+
+```bash
+netcheck interfaces                   # Show active interfaces only
+netcheck interfaces --all             # Show all interfaces (including inactive)
+netcheck interfaces --public          # Also fetch and display public WAN IP
+netcheck --my-ip --public            # Legacy flag with public IP
+```
+
+### Output Filtering (`--show`)
+
+```bash
+netcheck tcp 192.168.1.1-50 22 --show success    # Only successful connections
+netcheck tcp 10.0.0.0/24 443 --show fail         # Only failures
+netcheck -q 192.168.1.1 80,443 --show success    # Legacy quick-mode filtering
+```
+
 ### Global Flags
 
 | Flag | Default | Description |
@@ -127,6 +144,9 @@ netcheck http https://api.example.com \
 | `-t, --timeout` | `5` | Connection timeout in seconds |
 | `-j, --jobs` | `10` | Concurrent thread pool size |
 | `-f, --format` | `text` | Output format: `text`, `json`, `csv`, `xml` |
+| `--json` | — | JSON output shorthand (alias for `-f json`) |
+| `--show` | `all` | Filter results: `all`, `success`, or `fail` (for `tcp`/`-q`) |
+| `--public` | — | Fetch and display public IP (for `interfaces`/`--my-ip`) |
 | `--retry` | `1` | Number of connection attempts |
 | `--retry-delay` | `1` | Delay between retries (seconds) |
 | `-V, --verbose` | — | Show extended details (headers, SANs, cipher info) |
@@ -155,10 +175,13 @@ NO_COLOR=1 netcheck ssl google.com -f json
 |---|---|
 | `-q, --quick <host> <port>` | `netcheck tcp` |
 | `-d, --dns <host>` | `netcheck dns` |
-| `-p, --ping <host>` | `netcheck ping` |
+| `-p, --ping <host>` | `netcheck ping` (supports IP ranges, runs concurrently) |
 | `-s, --status <url>` | `netcheck http` |
 | `--cert <host>` | `netcheck ssl` |
 | `--my-ip, -ip` | `netcheck interfaces` |
+| `--public` | Adds public IP display (works with `-ip` and `interfaces`) |
+| `--json` | JSON output shorthand (works with `-q` and `tcp`) |
+| `--show all\|success\|fail` | Result filter (works with `-q` and `tcp`) |
 
 ---
 
@@ -249,7 +272,7 @@ packaging/
 python3 build_packages.py --check
 
 # Sync a new version across all config files
-python3 build_packages.py --sync-version 2.2.0
+python3 build_packages.py --sync-version 2.3.0
 
 # Build all packages for the current OS
 python3 build_packages.py --all
@@ -363,7 +386,7 @@ network_access_check/
 │   ├── macos/
 │   ├── snap/
 │   └── windows/
-├── tests/                     ← pytest test suite (60 tests)
+├── tests/                     ← pytest test suite (68 tests)
 ├── docs/                      ← Guides and release notes
 ├── .github/workflows/         ← CI (ci.yml) + Release (release.yml)
 ├── build_packages.py          ← Build orchestration script

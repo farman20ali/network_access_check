@@ -82,7 +82,7 @@ create_man_page() {
     else
         # Inline fallback
         cat > "$man_dir/netcheck.1" << 'EOF'
-.TH NETCHECK 1 "June 2026" "version 2.2.0" "Network Intelligence Engine"
+.TH NETCHECK 1 "July 2026" "version 2.3.0" "Network Intelligence Engine"
 .SH NAME
 netcheck \- cross-platform network diagnostics, connectivity and path analysis
 .SH SYNOPSIS

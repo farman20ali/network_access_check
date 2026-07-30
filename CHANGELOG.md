@@ -5,6 +5,37 @@ All notable changes to netcheck will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-07-30
+
+### Added
+- **Public IP Resolution** (`--public` flag):
+  - `interfaces` subcommand and legacy `--my-ip` flag now accept `--public` to fetch and display the public (WAN) IP address.
+  - Concurrent multi-API race strategy: queries `ipify.org`, `checkip.amazonaws.com`, `icanhazip.com`, and `ifconfig.me` in parallel and returns the first valid response.
+  - `public_ip_checked` field added to JSON output (`-f json`).
+- **Output Filtering** (`--show` flag):
+  - `--show all|success|fail` filters result output for batch `tcp` and legacy `-q`/`--quick` checks.
+  - Works in all output formats (text, JSON, CSV, XML).
+- **`--json` flag alias**:
+  - Shorthand for `-f json` in legacy and quick-mode; cleaner for CI pipelines and `jq` piping.
+- **Concurrent Ping for IP Ranges**:
+  - `-p` / `--ping` now expands IP ranges (`192.168.1.1-20`, CIDR) and dispatches all pings concurrently via a thread pool.
+  - Multi-ping JSON output uses a typed envelope (`"type": "ping"`, `"count"`, `"results": [...]`).
+  - Results sorted by target IP for deterministic output.
+- **Typed Result Envelopes** — all diagnostic modules now include `"type"` in their result dict:
+  - `dns`, `http`, `ssl`, `ping`, `tcp`, `interfaces`, `ports`, `traceroute`, `scan`, `whois`.
+- **Unified `_detect_result_type()` helper** in `formatters.py`:
+  - Single authoritative dispatch path for JSON/CSV/XML formatting.
+  - Reads `"type"` key first; falls back to metadata heuristics for backward compatibility.
+- **Expanded Test Suite** — 8 new tests:
+  - `test_my_ip_with_public`, `test_subcommand_interfaces_with_public` — `--public` flag coverage.
+  - `test_quick_flag_invalid_args` — validates `-q`/`--quick` requires exactly 2 arguments.
+  - `test_ping_flag_ip_range` — concurrent ping range dispatch.
+  - `test_ping_range_json_format` — multi-ping JSON envelope structure.
+
+### Changed
+- `netcheck/modules/interfaces.py` — `get_public_ip()` extracted as a standalone function; `get_network_interfaces()` accepts `include_public` parameter.
+- `netcheck/utils/formatters.py` — type-dispatch rebuilt around `_detect_result_type()`; multi-ping batch JSON envelope added.
+
 ## [2.2.0] - 2026-06-28
 
 ### Added
@@ -203,6 +234,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-OS support (Ubuntu, Debian, CentOS, Fedora, Arch, openSUSE)
 - Three installation methods (manual, DEB, Snap)
 
+[2.3.0]: https://github.com/farman20ali/network_access_check/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/farman20ali/network_access_check/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/farman20ali/network_access_check/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/farman20ali/network_access_check/compare/v1.2.0...v2.0.0

@@ -102,6 +102,7 @@ def parse_batch_file(filepath: str) -> List[Tuple[str, str]]:
         return []
 
 def print_help():
+    from netcheck import __version__
     cmd_name = "netcheck"
     if len(sys.argv) > 0:
         prog = sys.argv[0]
@@ -137,7 +138,7 @@ OPTIONS:
     -h, --help                  Show this help message
     -v, --version               Show version information
 
-SUBCOMMANDS (v2.2.0):
+SUBCOMMANDS (v{__version__}):
     tcp <host> <port>           Check TCP connectivity (accepts ranges)
     dns <host>                  Perform DNS lookup and show nameservers
     http <url>                  Validate HTTP response and size

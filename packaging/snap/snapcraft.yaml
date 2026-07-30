@@ -24,7 +24,7 @@ description: |
   - Port scanner — concurrent port scan targeting common or custom ranges
   - WHOIS / RDAP lookup — domain/IP registration check via modern HTTP JSON APIs
 
-  Advanced Features (v2.2.0):
+  Advanced Features (v2.3.0):
   - Subcommand CLI: tcp, dns, http, ssl, ping, interfaces, ports, traceroute, scan, whois
   - Legacy flags kept for backward compatibility (-q, -d, -p, -s, --cert, --my-ip)
   - Watch mode (-w / --watch) with custom interval (-i / --interval) for live monitoring
