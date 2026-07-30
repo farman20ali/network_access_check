@@ -9,8 +9,26 @@ def normalize_host(raw: str) -> str:
     raw = raw.split("/", 1)[0]
     raw = raw.split("?", 1)[0]
     raw = raw.split("#", 1)[0]
-    raw = raw.split(":", 1)[0]
+    
+    # Handle IPv6 bracket notation, e.g. [2001:db8::1]:80 or [2001:db8::1]
+    if raw.startswith("["):
+        if "]" in raw:
+            parts = raw.split("]", 1)
+            host = parts[0][1:]
+            return host.strip()
+            
+    # If it has multiple colons, treat as a bare IPv6 address and do not split
+    if raw.count(":") > 1:
+        return raw.strip()
+        
+    if ":" in raw:
+        raw = raw.split(":", 1)[0]
     return raw.strip()
+
+def is_valid_host(host: str) -> bool:
+    """Checks if a normalized host is non-empty and potentially valid."""
+    return bool(host and host.strip())
+
 
 def parse_line_to_raw_host_port(line: str, default_port: str = "80") -> Tuple[str, str]:
     """

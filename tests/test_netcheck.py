@@ -28,6 +28,9 @@ class TestNetCheckUtilities(unittest.TestCase):
         self.assertEqual(normalize_host("192.168.1.1:80"), "192.168.1.1")
         self.assertEqual(normalize_host("example.com"), "example.com")
         self.assertEqual(normalize_host(""), "")
+        self.assertEqual(normalize_host("[2001:db8::1]:80"), "2001:db8::1")
+        self.assertEqual(normalize_host("2001:db8::1"), "2001:db8::1")
+
 
     def test_parse_line_to_raw_host_port(self):
         self.assertEqual(parse_line_to_raw_host_port("http://192.168.1.1:8080/path"), ("192.168.1.1", "8080"))
@@ -57,6 +60,21 @@ class TestNetCheckUtilities(unittest.TestCase):
         import time
         time.sleep(0.15)
         self.assertIsNone(cache.get("key"))
+
+    def test_cache_eviction(self):
+        cache = Cache(default_ttl=60, max_size=3)
+        cache.set("k1", "v1")
+        cache.set("k2", "v2")
+        cache.set("k3", "v3")
+        self.assertEqual(cache.get("k1"), "v1")
+        
+        # Adding a 4th item should evict the oldest key ("k1")
+        cache.set("k4", "v4")
+        self.assertIsNone(cache.get("k1"))
+        self.assertEqual(cache.get("k2"), "v2")
+        self.assertEqual(cache.get("k3"), "v3")
+        self.assertEqual(cache.get("k4"), "v4")
+
 
     def test_timeout_mechanism(self):
         def slow_func():

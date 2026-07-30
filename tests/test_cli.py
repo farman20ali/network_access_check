@@ -280,6 +280,90 @@ class TestNetCheckCLI(unittest.TestCase):
             self.assertEqual(cm.exception.code, 0)
             mock_get_interfaces.assert_called_once_with(all_interfaces=True, include_public=True)
 
+    @patch('netcheck.cli.run_check_with_retry')
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_legacy_dns_flag_normalisation(self, mock_stdout, mock_run_retry):
+        mock_run_retry.return_value = {
+            "target": "google.com",
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "metadata": {"ips": ["8.8.8.8"]}
+        }
+        with patch('sys.argv', ['netcheck', '-dns', 'google.com']):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 0)
+            args, kwargs = mock_run_retry.call_args
+            self.assertEqual(args[1], ('google.com', 5.0))
+
+    @patch('netcheck.cli.ping_host')
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_ping_flag_ip_range(self, mock_stdout, mock_ping):
+        """IP range given to -p should ping each host concurrently and exit 0 when all succeed."""
+        mock_ping.side_effect = lambda h, count, timeout: {
+            "type": "ping",
+            "target": h,
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "latency_ms": 10.0,
+            "metadata": {
+                "host": h,
+                "packets_sent": 4,
+                "packets_received": 4,
+                "packet_loss_pct": 0.0,
+                "min_rtt_ms": 1.0,
+                "avg_rtt_ms": 2.0,
+                "max_rtt_ms": 3.0,
+            }
+        }
+        with patch('sys.argv', ['netcheck', '-p', '192.168.1.1-3']):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 0)
+        # ping_host should have been called once per IP in the range
+        called_hosts = [call.args[0] for call in mock_ping.call_args_list]
+        self.assertIn("192.168.1.1", called_hosts)
+        self.assertIn("192.168.1.2", called_hosts)
+        self.assertIn("192.168.1.3", called_hosts)
+        self.assertEqual(len(called_hosts), 3)
+
+    @patch('netcheck.cli.ping_host')
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_ping_range_json_format(self, mock_stdout, mock_ping):
+        """JSON output for a ping range should use the typed multi-ping envelope."""
+        import json as _json
+        mock_ping.side_effect = lambda h, count, timeout: {
+            "type": "ping",
+            "target": h,
+            "status": "SUCCESS",
+            "success": True,
+            "error": None,
+            "latency_ms": 5.0,
+            "metadata": {
+                "host": h,
+                "packets_sent": 4,
+                "packets_received": 4,
+                "packet_loss_pct": 0.0,
+                "min_rtt_ms": 1.0,
+                "avg_rtt_ms": 2.0,
+                "max_rtt_ms": 3.0,
+            }
+        }
+        with patch('sys.argv', ['netcheck', '-p', '10.0.0.1-2', '--json']):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 0)
+        output = mock_stdout.getvalue()
+        data = _json.loads(output)
+        self.assertEqual(data["type"], "ping")
+        self.assertEqual(data["count"], 2)
+        self.assertIsInstance(data["results"], list)
+        targets = {r["target"] for r in data["results"]}
+        self.assertIn("10.0.0.1", targets)
+        self.assertIn("10.0.0.2", targets)
+
 
 class TestCLITier4Features(unittest.TestCase):
     """Tests for Tier 4 CLI infrastructure: env vars, watch mode, new subcommands, error handling."""
@@ -419,6 +503,29 @@ class TestCLITier4Features(unittest.TestCase):
                 main()
             self.assertEqual(cm.exception.code, 0)
             mock_check_ports.assert_called_once()
+
+    def test_execute_concurrent_checks_invalid_port(self):
+        """execute_concurrent_checks should gracefully catch ValueError on invalid port."""
+        from netcheck.cli import execute_concurrent_checks
+        targets = [("localhost", "invalid_port"), ("localhost", "80")]
+        with patch('netcheck.cli.run_check_with_retry') as mock_retry:
+            mock_retry.return_value = {
+                "target": "localhost:80",
+                "status": "SUCCESS",
+                "success": True,
+                "error": None,
+                "metadata": {}
+            }
+            res = execute_concurrent_checks(targets, timeout=1.0, max_jobs=2, retries=1, retry_delay=1.0)
+            self.assertEqual(len(res), 2)
+            
+            failed_check = [r for r in res if "invalid_port" in r["target"]][0]
+            self.assertFalse(failed_check["success"])
+            self.assertEqual(failed_check["error"], "Invalid port number: invalid_port")
+            
+            success_check = [r for r in res if "80" in r["target"]][0]
+            self.assertTrue(success_check["success"])
+
 
 
 if __name__ == '__main__':

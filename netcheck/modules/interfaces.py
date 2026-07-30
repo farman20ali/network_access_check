@@ -153,6 +153,7 @@ def get_network_interfaces(all_interfaces: bool = False, include_public: bool = 
         interfaces = {name: iface for name, iface in interfaces.items() if iface.get("status") == "UP"}
 
     return {
+        "type": "interfaces",
         "target": "interfaces",
         "status": "SUCCESS",
         "latency_ms": 0.0,
@@ -169,6 +170,7 @@ def get_network_interfaces(all_interfaces: bool = False, include_public: bool = 
         }
     }
 
+
 def check_listening_ports() -> Dict[str, Any]:
     """
     Identifies all local active listening TCP sockets, process names, PIDs,
@@ -184,6 +186,7 @@ def check_listening_ports() -> Dict[str, Any]:
         error = str(e)
 
     return {
+        "type": "ports",
         "target": "ports",
         "status": "SUCCESS" if success else "FAILED",
         "latency_ms": 0.0,
@@ -193,6 +196,7 @@ def check_listening_ports() -> Dict[str, Any]:
             "listening_ports": ports
         }
     }
+
 
 def _parse_linux_ip_addr(all_interfaces: bool = False) -> Dict[str, Any]:
     interfaces = {}

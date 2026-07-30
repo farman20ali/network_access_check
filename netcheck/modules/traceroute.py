@@ -245,6 +245,7 @@ def traceroute(host: str, max_hops: int = 30, timeout: float = 2.0) -> Dict[str,
     target_host = target.split("/", 1)[0].split(":", 1)[0]
     
     result = {
+        "type": "traceroute",
         "target": target_host,
         "status": "FAILED",
         "latency_ms": None,
@@ -254,6 +255,7 @@ def traceroute(host: str, max_hops: int = 30, timeout: float = 2.0) -> Dict[str,
             "hops": []
         }
     }
+
     
     start_time = time.perf_counter()
     hops = []

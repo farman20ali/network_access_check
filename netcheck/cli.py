@@ -18,35 +18,37 @@ from netcheck.utils.formatters import format_text, format_json, format_csv, form
 from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
 from netcheck.utils.normalize import parse_line_to_raw_host_port
 
+from netcheck.utils.retry import retry_call
+
 def run_check_with_retry(check_fn, args=(), kwargs=None, retries=1, delay=1.0) -> Dict[str, Any]:
     """Runs a check function and retries it if it fails or returns success=False."""
     if kwargs is None:
         kwargs = {}
         
-    attempt = 1
-    result = None
-    while attempt <= retries:
+    def _run():
+        res = check_fn(*args, **kwargs)
+        if not res.get("success", False):
+            raise RuntimeError(res.get("error") or "Check returned unsuccessful status")
+        return res
+        
+    try:
+        return retry_call(_run, retries=retries, delay=delay)
+    except Exception:
+        # Re-run once to return the failed result dict with full metadata
         try:
-            result = check_fn(*args, **kwargs)
-            if result.get("success", False):
-                return result
-        except Exception as e:
-            result = {
+            return check_fn(*args, **kwargs)
+        except Exception as inner_e:
+            return {
                 "target": str(args[0]) if args else "unknown",
                 "status": "FAILED",
                 "latency_ms": 0.0,
                 "success": False,
-                "error": str(e),
+                "error": str(inner_e),
                 "metadata": {}
             }
-            
-        if attempt < retries:
-            time.sleep(delay)
-        attempt += 1
-        
-    return result or {"success": False, "status": "FAILED", "target": "unknown", "error": "No attempts made"}
 
 def parse_csv_content(content: str) -> List[Tuple[str, str]]:
+
     """Parses CSV content of hosts and ports."""
     targets = []
     try:
@@ -120,7 +122,7 @@ OPTIONS:
     -q, --quick <host> <port>   Quick test mode (supports ranges: 80,443 or 8000-8100)
     -o, --output <file>         Save quick mode results to file
     -d, --dns <host>            Resolve DNS and show IP address (accepts URLs)
-    -p, --ping <host>           Ping host using ICMP (accepts URLs/IPs)
+    -p, --ping <host>           Ping host using ICMP (accepts IPs/URLs/ranges e.g. 192.168.1.1-20)
     -s, --status <url>          Check HTTP/HTTPS status code and response time
     --cert <host>               Check SSL/TLS certificate validity and expiration
     --my-ip, -ip                Show all network interfaces and IP addresses (UP only)
@@ -180,6 +182,7 @@ EXAMPLES:
     {cmd_name} tcp 10.0.0.1-20 22 --show fail --json # Subcommand TCP with filters
     {cmd_name} -d google.com                        # Resolve DNS to IP
     {cmd_name} -p 8.8.8.8                           # Ping Google DNS
+    {cmd_name} -p 192.168.1.1-20                    # Ping IP range concurrently
     {cmd_name} --my-ip                              # Show all network interfaces and IPs
 
 INPUT FORMAT:
@@ -207,12 +210,25 @@ class NetCheckArgumentParser(argparse.ArgumentParser):
         sys.exit(2)
 
 def main():
+    # Normalize legacy single-dash multi-character options to prevent short-flag misparsing
+    for idx in range(1, len(sys.argv)):
+        arg = sys.argv[idx]
+        if arg == "-dns":
+            sys.argv[idx] = "--dns"
+        elif arg == "-ping":
+            sys.argv[idx] = "--ping"
+        elif arg == "-status":
+            sys.argv[idx] = "--status"
+        elif arg == "-cert":
+            sys.argv[idx] = "--cert"
+
     # Force stdout and stderr to UTF-8 to prevent UnicodeEncodeError on Windows
     try:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     except (AttributeError, TypeError):
         pass
+
 
     import os
     env_timeout = 5.0
@@ -311,9 +327,36 @@ def main():
         sys.exit(0 if res["success"] else 1)
         
     if args.ping:
-        res = run_check_with_retry(ping_host, (args.ping, 4, timeout), retries=retries, delay=retry_delay)
-        print(format_output([res], fmt, verbose=verbose))
-        sys.exit(0 if res["success"] else 1)
+        hosts = expand_ip_range(args.ping)
+        if len(hosts) == 1:
+            # Single host – simple path with retry support
+            res = run_check_with_retry(ping_host, (hosts[0], 4, timeout), retries=retries, delay=retry_delay)
+            print(format_output([res], fmt, verbose=verbose))
+            sys.exit(0 if res["success"] else 1)
+        else:
+            # Multiple hosts – run concurrently
+            results = []
+            with ThreadPoolExecutor(max_workers=args.jobs) as executor:
+                futures = {executor.submit(ping_host, h, 4, timeout): h for h in hosts}
+                for future in as_completed(futures):
+                    try:
+                        results.append(future.result())
+                    except Exception as exc:
+                        h = futures[future]
+                        results.append({
+                            "type": "ping",
+                            "target": h,
+                            "status": "FAILED",
+                            "latency_ms": 0.0,
+                            "success": False,
+                            "error": str(exc),
+                            "metadata": {}
+                        })
+            # Sort by target IP for consistent output
+            results.sort(key=lambda r: r.get("target", ""))
+            print(format_output(results, fmt, verbose=verbose))
+            all_ok = all(r["success"] for r in results)
+            sys.exit(0 if all_ok else 1)
         
     if args.status:
         res = run_check_with_retry(check_http_status, (args.status, timeout), retries=retries, delay=retry_delay)
@@ -606,25 +649,32 @@ def run_batch_targets(targets: List[Tuple[str, str]], timeout: float, max_jobs: 
     fail_filename = f"fail-{date_str}.{ext}"
     comb_filename = f"combined-{date_str}.{ext}"
     
-    try:
-        if success_results:
-            with open(res_filename, "w") as f:
+    if success_results:
+        try:
+            with open(res_filename, "w", encoding="utf-8") as f:
                 f.write(format_output(success_results, fmt, verbose=verbose, use_color=False))
-        if fail_results:
-            with open(fail_filename, "w") as f:
-                f.write(format_output(fail_results, fmt, verbose=verbose, use_color=False))
-        if combined:
-            with open(comb_filename, "w") as f:
-                f.write(format_output(results, fmt, verbose=verbose, use_color=False))
-                
-        print(f"Check Complete! Results written to output files.")
-        print(f"Successful checks written to: {res_filename} ({len(success_results)} items)")
-        print(f"Failed checks written to: {fail_filename} ({len(fail_results)} items)")
-        if combined:
-            print(f"Combined report written to: {comb_filename}")
+            print(f"Successful checks written to: {res_filename} ({len(success_results)} items)")
+        except Exception as e:
+            print(f"Error saving successful results to {res_filename}: {e}", file=sys.stderr)
             
-    except Exception as e:
-        print(f"Error saving batch output files: {e}", file=sys.stderr)
+    if fail_results:
+        try:
+            with open(fail_filename, "w", encoding="utf-8") as f:
+                f.write(format_output(fail_results, fmt, verbose=verbose, use_color=False))
+            print(f"Failed checks written to: {fail_filename} ({len(fail_results)} items)")
+        except Exception as e:
+            print(f"Error saving failed results to {fail_filename}: {e}", file=sys.stderr)
+            
+    if combined:
+        try:
+            with open(comb_filename, "w", encoding="utf-8") as f:
+                f.write(format_output(results, fmt, verbose=verbose, use_color=False))
+            print(f"Combined report written to: {comb_filename}")
+        except Exception as e:
+            print(f"Error saving combined report to {comb_filename}: {e}", file=sys.stderr)
+            
+    print(f"Check Complete!")
+
         
     print(format_output(results, fmt, verbose=verbose))
     sys.exit(0 if len(fail_results) == 0 else 1)
@@ -640,17 +690,34 @@ def execute_concurrent_checks(targets: List[Tuple[str, int]], timeout: float, ma
     with ThreadPoolExecutor(max_workers=max_jobs) as executor:
         futures = {}
         for host, port in targets:
-            fut = executor.submit(
-                run_check_with_retry,
-                check_tcp_connect,
-                args=(host, int(port), timeout),
-                retries=retries,
-                delay=retry_delay
-            )
-            futures[fut] = (host, port)
+            try:
+                port_val = int(port)
+                fut = executor.submit(
+                    run_check_with_retry,
+                    check_tcp_connect,
+                    args=(host, port_val, timeout),
+                    retries=retries,
+                    delay=retry_delay
+                )
+                futures[fut] = (host, port)
+            except ValueError:
+                res = {
+                    "type": "tcp",
+                    "target": f"{host}:{port}",
+                    "status": "FAILED",
+                    "latency_ms": 0.0,
+                    "success": False,
+                    "error": f"Invalid port number: {port}",
+                    "metadata": {"host": host, "port": port}
+                }
+                results.append(res)
+                if verbose:
+                    sys.stderr.write(f"✗ FAILED: {host}:{port} (Invalid port number)\n")
+                    sys.stderr.flush()
             
         completed = 0
-        total = len(targets)
+        total = len(futures)
+
         
         for fut in as_completed(futures):
             host, port = futures[fut]

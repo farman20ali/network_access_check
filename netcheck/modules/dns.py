@@ -1,6 +1,7 @@
 import socket
 import time
 from typing import Dict, Any, List
+from concurrent.futures import TimeoutError
 from netcheck.utils.cache import dns_cache
 from netcheck.utils.normalize import normalize_host
 from netcheck.utils.timeout import run_with_timeout
@@ -13,6 +14,7 @@ def dns_lookup(raw_target: str, timeout: float = 5.0) -> Dict[str, Any]:
     host = normalize_host(raw_target)
     if not host:
         return {
+            "type": "dns",
             "target": raw_target,
             "status": "FAILED",
             "latency_ms": 0.0,
@@ -22,6 +24,7 @@ def dns_lookup(raw_target: str, timeout: float = 5.0) -> Dict[str, Any]:
         }
         
     result = {
+        "type": "dns",
         "target": raw_target,
         "status": "FAILED",
         "latency_ms": None,
@@ -34,6 +37,7 @@ def dns_lookup(raw_target: str, timeout: float = 5.0) -> Dict[str, Any]:
             "reverse_dns": None
         }
     }
+
     
     # Check if target is already an IP address
     is_ip = False
@@ -107,8 +111,8 @@ def dns_lookup(raw_target: str, timeout: float = 5.0) -> Dict[str, Any]:
                     return name
                 rev_name = run_with_timeout(2.0, _reverse)
                 result["metadata"]["reverse_dns"] = rev_name
-            except Exception:
-                pass
+            except Exception as rev_err:
+                result["metadata"]["reverse_dns_error"] = str(rev_err)
                 
         # Cache successful resolutions
         dns_cache.set(host, {
@@ -118,11 +122,18 @@ def dns_lookup(raw_target: str, timeout: float = 5.0) -> Dict[str, Any]:
             "metadata": result["metadata"]
         })
         
+    except TimeoutError as e:
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        result["latency_ms"] = round(duration_ms, 2)
+        result["error"] = f"DNS resolution timed out: {e}"
+        result["status"] = "FAILED"
+        result["success"] = False
     except Exception as e:
         duration_ms = (time.perf_counter() - start_time) * 1000.0
         result["latency_ms"] = round(duration_ms, 2)
         result["error"] = str(e)
         result["status"] = "FAILED"
         result["success"] = False
+
 
     return result

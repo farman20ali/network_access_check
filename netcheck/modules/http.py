@@ -19,6 +19,7 @@ def check_http_status(
         target_url = "http://" + url
         
     result = {
+        "type": "http",
         "target": target_url,
         "status": "FAILED",
         "latency_ms": None,
@@ -39,12 +40,15 @@ def check_http_status(
             for k, v in headers.items():
                 req_headers[k] = v
                 
-        if auth and len(auth) == 2:
+        if auth:
+            if not isinstance(auth, (tuple, list)) or len(auth) != 2:
+                raise ValueError("Auth parameter must be a tuple or list of (username, password)")
             import base64
             auth_str = f"{auth[0]}:{auth[1]}"
             auth_bytes = auth_str.encode('utf-8')
             b64_auth = base64.b64encode(auth_bytes).decode('utf-8')
             req_headers["Authorization"] = f"Basic {b64_auth}"
+
             
         req = urllib.request.Request(
             target_url, 
@@ -57,10 +61,10 @@ def check_http_status(
             
             final_url = response.geturl()
             status_code = response.getcode()
-            headers = {k.lower(): v for k, v in response.info().items()}
+            resp_headers = {k.lower(): v for k, v in response.info().items()}
             
             # Estimate response size
-            content_length = headers.get("content-length")
+            content_length = resp_headers.get("content-length")
             if content_length is not None:
                 try:
                     size_bytes = int(content_length)
@@ -78,7 +82,8 @@ def check_http_status(
             
             result["metadata"]["status_code"] = status_code
             result["metadata"]["size_bytes"] = size_bytes
-            result["metadata"]["headers"] = headers
+            result["metadata"]["headers"] = resp_headers
+
             
             if final_url != target_url:
                 result["metadata"]["redirect_url"] = final_url

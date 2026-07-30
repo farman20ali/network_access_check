@@ -66,6 +66,7 @@ def lookup_registration(target: str) -> Dict[str, Any]:
             pass
             
     result = {
+        "type": "whois",
         "target": target_clean,
         "status": "FAILED",
         "latency_ms": None,
@@ -79,6 +80,7 @@ def lookup_registration(target: str) -> Dict[str, Any]:
             "raw_whois": None
         }
     }
+
     
     start_time = time.perf_counter()
     

@@ -53,6 +53,7 @@ def check_ssl_certificate(raw_target: str, port: int = 443, timeout: float = 5.0
     target_host = normalize_host(target_host)
     
     result = {
+        "type": "ssl",
         "target": f"{target_host}:{port}",
         "status": "FAILED",
         "latency_ms": None,
@@ -73,6 +74,7 @@ def check_ssl_certificate(raw_target: str, port: int = 443, timeout: float = 5.0
             "fingerprint": None
         }
     }
+
     
     # Resolve DNS
     dns_res = dns_lookup(target_host, timeout=min(timeout, 3.0))

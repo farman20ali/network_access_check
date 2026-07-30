@@ -45,6 +45,7 @@ def scan_ports(host: str, ports: List[int] = None, timeout: float = 1.5, max_wor
         ports = COMMON_PORTS
         
     result = {
+        "type": "scan",
         "target": host,
         "status": "FAILED",
         "latency_ms": None,
@@ -56,6 +57,7 @@ def scan_ports(host: str, ports: List[int] = None, timeout: float = 1.5, max_wor
             "ips": []
         }
     }
+
     
     start_time = time.perf_counter()
     
