@@ -15,6 +15,7 @@ Commands:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
 import re
@@ -513,7 +514,7 @@ SectionEnd
     print(f"✅  Windows NSIS Installer built at dist/win/netcheck-{version}-setup.exe")
 
 
-def build_choco_package(version: str) -> None:
+def build_choco_package(version: str, checksum_val: str | None = None, checksum_from_release: bool = False, checksum_file: str | None = None) -> None:
     print("\n─── Building Chocolatey Package ───")
     if not tool_ok("choco"):
         print("⚠️   choco not found. Skipping Chocolatey package build.")
@@ -537,21 +538,117 @@ def build_choco_package(version: str) -> None:
     nuspec_path = choco_dir / "netcheck.nuspec"
     nuspec_path.write_text(nuspec_content, encoding="utf-8")
 
-    # Copy install and uninstall scripts (NOT the .exe binary)
-    if install_template.exists():
-        import hashlib
+    # Resolve checksum
+    checksum = ""
+
+    # 1. Manually specified checksum
+    if checksum_val:
+        checksum = checksum_val.strip().lower()
+        if not re.match(r"^[0-9a-fA-F]{64}$", checksum):
+            sys.exit(f"❌  Invalid SHA-256 checksum format: '{checksum_val}' (must be 64 hex characters)")
+        print(f"Using manually specified SHA-256: {checksum}")
+
+    # 2. Checksum from file
+    elif checksum_file:
+        cpath = Path(checksum_file)
+        if not cpath.exists():
+            sys.exit(f"❌  Checksum file not found at: {checksum_file}")
+
+        try:
+            content = cpath.read_text(encoding="utf-8", errors="ignore").strip()
+            if re.match(r"^[0-9a-fA-F]{64}$", content):
+                checksum = content.lower()
+                print(f"Read SHA-256 checksum from file {cpath.name}: {checksum}")
+        except Exception:
+            pass
+
+        if not checksum:
+            print(f"Calculating SHA-256 of local file {cpath.name}...")
+            h = hashlib.sha256()
+            with open(cpath, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    h.update(chunk)
+            checksum = h.hexdigest()
+            print(f"Calculated SHA-256: {checksum}")
+
+    # 3. Calculate from GitHub release
+    elif checksum_from_release:
+        url = f"https://github.com/farman20ali/network_access_check/releases/download/v{version}/netcheck-{version}-setup.exe"
+        print(f"Downloading and calculating checksum from GitHub release URL:\n  {url}")
+        try:
+            import urllib.request
+            import urllib.error
+            req = urllib.request.Request(
+                url,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            h = hashlib.sha256()
+            with urllib.request.urlopen(req) as response:
+                print("Connected. Downloading...")
+                while True:
+                    chunk = response.read(8192)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+            checksum = h.hexdigest()
+            print(f"Successfully calculated release installer SHA-256: {checksum}")
+        except urllib.error.HTTPError as e:
+            print(f"❌  HTTP Error downloading from release URL: {e.code} - {e.reason}")
+            print("    Please ensure the GitHub release is created and the installer file has been uploaded.")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌  Error downloading from release URL: {e}")
+            sys.exit(1)
+
+    # 4. Interactive prompt if no options were specified and terminal is interactive
+    if not checksum and not (checksum_val or checksum_from_release or checksum_file) and sys.stdin.isatty():
+        print("\n--- Chocolatey Installer Checksum Resolution ---")
+        print("Select an option to resolve the SHA-256 checksum:")
+        print("  [1] Calculate from local installer file (default)")
+        print("  [2] Download and calculate from GitHub release URL")
+        print("  [3] Enter checksum manually (64-char hex)")
+        print("  [4] Read/calculate checksum from a custom file")
+
+        try:
+            choice = input("Enter choice [1-4] (default 1): ").strip()
+        except KeyboardInterrupt:
+            sys.exit("\nAborted.")
+
+        if choice == "2":
+            build_choco_package(version, checksum_from_release=True)
+            return
+        elif choice == "3":
+            val = input("Enter SHA-256 checksum (64-char hex): ").strip()
+            if re.match(r"^[0-9a-fA-F]{64}$", val):
+                checksum = val.lower()
+            else:
+                print("⚠️   Invalid SHA-256 format. Falling back to local file.")
+        elif choice == "4":
+            path_str = input("Enter file path: ").strip()
+            if path_str:
+                build_choco_package(version, checksum_file=path_str)
+                return
+            else:
+                print("⚠️   No path entered. Falling back to local file.")
+
+    # 5. Default fallback: Calculate from local installer file
+    if not checksum:
         installer_path = DIST_DIR / "win" / f"netcheck-{version}-setup.exe"
-        checksum = ""
         if installer_path.exists():
             h = hashlib.sha256()
             with open(installer_path, "rb") as f:
                 for chunk in iter(lambda: f.read(8192), b""):
                     h.update(chunk)
             checksum = h.hexdigest()
-            print(f"Calculated installer SHA-256: {checksum}")
+            print(f"Calculated local installer SHA-256: {checksum}")
         else:
-            print(f"⚠️   Windows installer not found at {installer_path}. Checksum placeholder will not be replaced.")
-        
+            sys.exit(
+                f"❌  Cannot build Chocolatey package: Windows installer not found at {installer_path},\n"
+                "    and no checksum override was provided via --choco-checksum, --choco-checksum-from-release, or --choco-checksum-file."
+            )
+
+    # Copy install and uninstall scripts (NOT the .exe binary)
+    if install_template.exists():
         install_content = (
             install_template.read_text(encoding="utf-8")
             .replace("{version}", version)
@@ -633,13 +730,13 @@ def build_mac_pkg(version: str) -> None:
     print(f"✅  macOS .pkg built at {pkg_out}")
 
 
-def build_win() -> None:
+def build_win(checksum_val: str | None = None, checksum_from_release: bool = False, checksum_file: str | None = None) -> None:
     print("\n─── Building Windows Executable (.exe) ───")
     icon = REPO_ROOT / "assets" / "icons" / "icon.ico"
     _pyinstaller_build("Windows", "win", "netcheck.exe", icon=icon)
     version = get_version()
     build_win_installer(version)
-    build_choco_package(version)
+    build_choco_package(version, checksum_val=checksum_val, checksum_from_release=checksum_from_release, checksum_file=checksum_file)
 
 
 def build_mac() -> None:
@@ -663,7 +760,7 @@ def build_pypi() -> None:
 
 # ── --all ──────────────────────────────────────────────────────────────────────
 
-def build_all() -> None:
+def build_all(checksum_val: str | None = None, checksum_from_release: bool = False, checksum_file: str | None = None) -> None:
     plat    = platform.system().lower()
     version = get_version()
     print(f"\nBuilding all packages for {platform.system()} (netcheck v{version})…")
@@ -690,7 +787,7 @@ def build_all() -> None:
                 results[label] = f"⚠️   Skipped — {e}"
     elif plat == "windows":
         try:
-            build_win()
+            build_win(checksum_val=checksum_val, checksum_from_release=checksum_from_release, checksum_file=checksum_file)
             results["Windows EXE"] = "✅  Success"
             results["Windows Installer"] = "✅  Success" if tool_ok("makensis") else "⚠️   Skipped (no makensis)"
             results["Chocolatey Package"] = "✅  Success" if tool_ok("choco") else "⚠️   Skipped (no choco)"
@@ -777,6 +874,10 @@ def main() -> None:
     p.add_argument("--rpm",          action="store_true",  help="Build RPM")
     p.add_argument("--snap",         action="store_true",  help="Build Snap .snap")
     p.add_argument("--win",          action="store_true",  help="Build Windows exe + NSIS + Choco")
+    p.add_argument("--choco",        action="store_true",  help="Build only the Chocolatey package")
+    p.add_argument("--choco-checksum",                     help="Specify the SHA-256 checksum for the Chocolatey installer manually")
+    p.add_argument("--choco-checksum-from-release", action="store_true", help="Download the setup installer from the GitHub release to calculate checksum")
+    p.add_argument("--choco-checksum-file",                help="Read the SHA-256 checksum from a file (or calculate the checksum of that file)")
     p.add_argument("--mac",          action="store_true",  help="Build macOS binary + PKG")
     p.add_argument("--all",          action="store_true",  help="Build all for current OS")
     args = p.parse_args()
@@ -788,9 +889,10 @@ def main() -> None:
     elif args.deb:          build_deb()
     elif args.rpm:          build_rpm()
     elif args.snap:         build_snap()
-    elif args.win:          build_win()
+    elif args.win:          build_win(checksum_val=args.choco_checksum, checksum_from_release=args.choco_checksum_from_release, checksum_file=args.choco_checksum_file)
+    elif args.choco:        build_choco_package(get_version(), checksum_val=args.choco_checksum, checksum_from_release=args.choco_checksum_from_release, checksum_file=args.choco_checksum_file)
     elif args.mac:          build_mac()
-    elif args.all:          build_all()
+    elif args.all:          build_all(checksum_val=args.choco_checksum, checksum_from_release=args.choco_checksum_from_release, checksum_file=args.choco_checksum_file)
     else:                   p.print_help()
 
 

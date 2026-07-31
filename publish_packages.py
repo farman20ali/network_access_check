@@ -24,6 +24,7 @@ Environment variables (optional, avoids interactive prompts)
 import argparse
 import os
 import platform
+import re
 import subprocess
 import sys
 
@@ -172,7 +173,7 @@ def publish_snap(channel: str = "stable") -> None:
 
 # ── --chocolatey ──────────────────────────────────────────────────────────────
 
-def publish_chocolatey() -> None:
+def publish_chocolatey(checksum_val: str | None = None, checksum_from_release: bool = False, checksum_file: str | None = None) -> None:
     """Push the newest .nupkg to Chocolatey.org."""
     print("\n─── Publishing to Chocolatey ───")
 
@@ -181,6 +182,55 @@ def publish_chocolatey() -> None:
             "❌  choco not found. Chocolatey is Windows-only.\n"
             "  Install: https://chocolatey.org/install"
         )
+
+    # Determine if rebuilding is needed or prompt if interactive and no options provided
+    rebuild = bool(checksum_val or checksum_from_release or checksum_file)
+
+    if not rebuild and sys.stdin.isatty():
+        print("\n--- Chocolatey Package Publish Options ---")
+        print("Choose an action:")
+        print("  [1] Push the existing package as-is (default)")
+        print("  [2] Rebuild package using live GitHub release checksum")
+        print("  [3] Rebuild package using manual checksum entry")
+        print("  [4] Rebuild package using custom file")
+        print("  [5] Rebuild package using local installer file")
+
+        try:
+            choice = input("Enter choice [1-5] (default 1): ").strip()
+        except KeyboardInterrupt:
+            sys.exit("\nAborted.")
+
+        if choice == "2":
+            checksum_from_release = True
+            rebuild = True
+        elif choice == "3":
+            val = input("Enter SHA-256 checksum (64-char hex): ").strip()
+            if re.match(r"^[0-9a-fA-F]{64}$", val):
+                checksum_val = val
+                rebuild = True
+            else:
+                print("⚠️   Invalid SHA-256 format. Proceeding with existing package.")
+        elif choice == "4":
+            path_str = input("Enter file path: ").strip()
+            if path_str:
+                checksum_file = path_str
+                rebuild = True
+            else:
+                print("⚠️   No path entered. Proceeding with existing package.")
+        elif choice == "5":
+            rebuild = True
+
+    if rebuild:
+        print("  Rebuilding Chocolatey package before publishing...")
+        cmd = [PYTHON_CMD, "build_packages.py", "--choco"]
+        if checksum_val:
+            cmd += ["--choco-checksum", checksum_val]
+        if checksum_from_release:
+            cmd += ["--choco-checksum-from-release"]
+        if checksum_file:
+            cmd += ["--choco-checksum-file", checksum_file]
+
+        _run(cmd, "Rebuilding Chocolatey package")
 
     nupkg = _glob_newest("netcheck.*.nupkg", sub="choco")
     if nupkg is None:
@@ -270,6 +320,9 @@ def main() -> None:
                    help="Snap channel to release to: stable|candidate|beta|edge  (default: stable)")
     p.add_argument("--chocolatey",       action="store_true",
                    help="Push .nupkg to Chocolatey.org")
+    p.add_argument("--choco-checksum",                     help="Specify the SHA-256 checksum for the Chocolatey installer manually")
+    p.add_argument("--choco-checksum-from-release", action="store_true", help="Download the setup installer from the GitHub release to calculate checksum")
+    p.add_argument("--choco-checksum-file",                help="Read the SHA-256 checksum from a file (or calculate the checksum of that file)")
     p.add_argument("--github-release",   metavar="TAG",
                    help="Create a GitHub Release for TAG and attach all dist artefacts")
 
@@ -282,7 +335,11 @@ def main() -> None:
     elif args.snap:
         publish_snap(channel=args.channel)
     elif args.chocolatey:
-        publish_chocolatey()
+        publish_chocolatey(
+            checksum_val=args.choco_checksum,
+            checksum_from_release=args.choco_checksum_from_release,
+            checksum_file=args.choco_checksum_file
+        )
     elif args.github_release:
         publish_github_release(tag=args.github_release)
     else:
