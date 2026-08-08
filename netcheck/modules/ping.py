@@ -13,6 +13,7 @@ def ping_host(raw_target: str, count: int = 4, timeout: float = 2.0) -> Dict[str
     host = normalize_host(raw_target)
     if not host:
         return {
+            "type": "ping",
             "target": raw_target,
             "status": "FAILED",
             "latency_ms": 0.0,
@@ -20,8 +21,10 @@ def ping_host(raw_target: str, count: int = 4, timeout: float = 2.0) -> Dict[str
             "error": "Empty ping target",
             "metadata": {}
         }
+
         
     result = {
+        "type": "ping",
         "target": raw_target,
         "status": "FAILED",
         "latency_ms": None,
@@ -37,6 +40,7 @@ def ping_host(raw_target: str, count: int = 4, timeout: float = 2.0) -> Dict[str
             "max_rtt_ms": None
         }
     }
+
     
     plat = platform.system().lower()
     

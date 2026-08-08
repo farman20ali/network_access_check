@@ -567,6 +567,95 @@ Interface: virbr0
 
 ---
 
+## 13.5. Local Listening Ports & Services (v2.2.0)
+
+### Show Active Listening Sockets
+```bash
+netcheck ports
+```
+
+Outputs a structured table of listening TCP ports, corresponding PIDs/processes, and maps them to Docker container names where appropriate:
+```
+Local Listening Ports & Services
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔓 Active Listening Sockets:
+  Proto  Local Address                  Port   Process/Service (PID)
+  ──────────────────────────────────────────────────────────────────
+  TCP    0.0.0.0                        22     ssh
+  TCP    0.0.0.0                        80     Docker: nginx-web (80)
+  TCP    0.0.0.0                        445    microsoft-ds
+  TCP    127.0.0.1                      3306   mysql
+  TCP    0.0.0.0                        6379   Docker: redis-cache (6379)
+  TCP    *                              8080   http-alt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+---
+
+## 13.8. Traceroute Path Analysis (v2.2.0)
+
+### Run Hop-by-Hop Traceroute
+```bash
+netcheck traceroute google.com
+```
+
+Displays each routing hop along the path to the host with its IP address, reverse hostname, and round-trip time:
+```
+Traceroute to google.com (142.250.190.46), max 30 hops
+  Hop 1:  192.168.1.1 (router.local)   1.2 ms
+  Hop 2:  10.0.0.1                     3.5 ms
+  Hop 3:  142.250.190.46               12.8 ms
+```
+
+---
+
+## 13.9. Port Scanning (v2.2.0)
+
+### Concurrent TCP Port Scan
+```bash
+netcheck scan localhost
+netcheck scan google.com -p 80,443,8080
+```
+
+Uses a high-concurrency engine to test lists/ranges of ports and identifies services:
+```
+Port Scan for: google.com
+  Port 80    [OPEN]  http (12ms)
+  Port 443   [OPEN]  https (11ms)
+  Port 8080  [CLOSED] http-alt (15ms)
+```
+
+---
+
+## 13.10. WHOIS & RDAP Lookup (v2.2.0)
+
+### Domain & IP Registration Info
+```bash
+netcheck whois google.com
+```
+
+Retrieves ownership, registrar, and creation date via RDAP with a WHOIS fallback:
+```
+WHOIS / RDAP lookup for: google.com
+  Registrar: MarkMonitor Inc.
+  Created: 1997-09-15T04:00:00Z
+  Registration Type: Domain
+```
+
+---
+
+## 13.12. Watch Loop Mode (v2.2.0)
+
+### Monitor Subcommands Continuously
+Any subcommand can be polled periodically to watch live changes in real time. Use `-w` / `--watch` to clear the terminal on update, and `-i` / `--interval` to specify the delay (default is 2.0s):
+```bash
+netcheck tcp google.com 443 --watch --interval 1.5
+```
+
+---
+
 ## 14. HTTP Status Checking (v1.2.0)
 
 ### Basic HTTP Status Check
@@ -843,3 +932,112 @@ netcheck critical-services.txt --retry 3 --retry-delay 2 -j 20
 - `-c` - Combined reports
 
 **All features work together!**
+
+---
+
+## 18. v2.3.0 New Features
+
+### Public IP Resolution (`--public`)
+```bash
+# Show local interfaces + public WAN IP
+netcheck interfaces --public
+netcheck interfaces --all --public
+
+# Legacy flag
+netcheck --my-ip --public
+```
+
+Output (JSON):
+```json
+{
+  "type": "interfaces",
+  "public_ip": "203.0.113.45",
+  "public_ip_checked": true,
+  "interfaces": { ... }
+}
+```
+
+---
+
+### Output Filtering (`--show success|fail|all`)
+```bash
+# Only print hosts that are reachable
+netcheck tcp 192.168.1.1-50 22 --show success
+
+# Only print failures for audit/alert
+netcheck tcp 10.0.0.0/24 443 --show fail
+
+# Also works with legacy -q mode
+netcheck -q 192.168.1.1 80,443 --show success
+
+# Combine with JSON output
+netcheck tcp 192.168.1.1-10 80 --show fail --json
+```
+
+---
+
+### `--json` Flag Alias
+```bash
+# These are equivalent:
+netcheck tcp 10.0.0.1 80 -f json
+netcheck tcp 10.0.0.1 80 --json
+
+# Cleaner for piping:
+netcheck -q 192.168.1.1 443 --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['status'])"
+```
+
+---
+
+### Concurrent Ping for IP Ranges
+```bash
+# Ping a /24 subnet concurrently
+netcheck -p 192.168.1.1-254
+
+# Get JSON batch envelope
+netcheck -p 10.0.0.1-10 --json
+```
+
+JSON envelope for multi-host ping:
+```json
+{
+  "check_date": "2026-07-30 10:00:00",
+  "type": "ping",
+  "count": 10,
+  "results": [
+    { "target": "10.0.0.1", "success": true, "latency_ms": 1.2, "packets_sent": 4, "packets_received": 4, "packet_loss_pct": 0.0 },
+    { "target": "10.0.0.2", "success": false, "error": "host unreachable", "latency_ms": 0.0 }
+  ]
+}
+```
+
+---
+
+### Typed Result Detection in All Formats
+All output formats (JSON, CSV, XML) now use a consistent `type` field across all subcommands:
+
+| Subcommand | `type` field in JSON |
+|---|---|
+| `tcp` | `"tcp"` |
+| `dns` | `"dns"` |
+| `http` | `"http"` |
+| `ssl` | `"ssl"` |
+| `ping` | `"ping"` |
+| `interfaces` | `"interfaces"` |
+| `ports` | `"ports"` |
+| `traceroute` | `"traceroute"` |
+| `scan` | `"scan"` |
+| `whois` | `"whois"` |
+
+---
+
+### v2.3.0 CI/CD Examples
+```bash
+# Only alert on failures, in JSON
+netcheck tcp prod-hosts.txt --show fail --json | jq '.results[] | .target'
+
+# Get public IP in scripts
+PUBLIC_IP=$(netcheck interfaces --public -f json | python3 -c "import sys,json; print(json.load(sys.stdin).get('public_ip','unknown'))")
+
+# Ping a subnet and count failures
+netcheck -p 192.168.1.1-50 --json | jq '[.results[] | select(.success == false)] | length'
+```

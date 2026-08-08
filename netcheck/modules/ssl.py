@@ -53,6 +53,7 @@ def check_ssl_certificate(raw_target: str, port: int = 443, timeout: float = 5.0
     target_host = normalize_host(target_host)
     
     result = {
+        "type": "ssl",
         "target": f"{target_host}:{port}",
         "status": "FAILED",
         "latency_ms": None,
@@ -67,9 +68,13 @@ def check_ssl_certificate(raw_target: str, port: int = 443, timeout: float = 5.0
             "valid_until": None,
             "days_until_expiry": None,
             "expired": False,
-            "verification_error": None
+            "verification_error": None,
+            "cipher": None,
+            "tls_version": None,
+            "fingerprint": None
         }
     }
+
     
     # Resolve DNS
     dns_res = dns_lookup(target_host, timeout=min(timeout, 3.0))
@@ -98,10 +103,20 @@ def check_ssl_certificate(raw_target: str, port: int = 443, timeout: float = 5.0
             
             with socket.socket(family, socket.SOCK_STREAM) as sock:
                 sock.settimeout(timeout)
-                # Wrap socket with hostname check
                 with context.wrap_socket(sock, server_hostname=target_host) as ssock:
                     ssock.connect((ip, port))
                     cert = ssock.getpeercert()
+                    try:
+                        ciph = ssock.cipher()
+                        if ciph:
+                            result["metadata"]["cipher"] = ciph[0]
+                            result["metadata"]["tls_version"] = ssock.version()
+                        der_bytes = ssock.getpeercert(binary_form=True)
+                        if der_bytes:
+                            import hashlib
+                            result["metadata"]["fingerprint"] = hashlib.sha256(der_bytes).hexdigest()
+                    except Exception:
+                        pass
             resolved_ip = ip
             strict_success = True
             verification_error = None
@@ -131,6 +146,17 @@ def check_ssl_certificate(raw_target: str, port: int = 443, timeout: float = 5.0
                 sock.settimeout(timeout)
                 with context_fallback.wrap_socket(sock, server_hostname=target_host) as ssock:
                     ssock.connect((resolved_ip, port))
+                    try:
+                        ciph = ssock.cipher()
+                        if ciph:
+                            result["metadata"]["cipher"] = ciph[0]
+                            result["metadata"]["tls_version"] = ssock.version()
+                        der_bytes = ssock.getpeercert(binary_form=True)
+                        if der_bytes:
+                            import hashlib
+                            result["metadata"]["fingerprint"] = hashlib.sha256(der_bytes).hexdigest()
+                    except Exception:
+                        pass
                     
                     # Try fallback to cryptography parsing of binary certificate
                     if HAS_CRYPTOGRAPHY:

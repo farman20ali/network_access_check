@@ -3,11 +3,12 @@ import threading
 from typing import Dict, Tuple, Any, Optional
 
 class Cache:
-    """Thread-safe cache with time-to-live (TTL) support."""
-    def __init__(self, default_ttl: float = 300.0):
+    """Thread-safe cache with time-to-live (TTL) support and size limit."""
+    def __init__(self, default_ttl: float = 300.0, max_size: int = 1000):
         self._cache: Dict[str, Tuple[Any, float]] = {}
         self._lock = threading.Lock()
         self._default_ttl = default_ttl
+        self._max_size = max_size
 
     def get(self, key: str) -> Optional[Any]:
         with self._lock:
@@ -23,6 +24,17 @@ class Cache:
         duration = ttl if ttl is not None else self._default_ttl
         expiry = time.time() + duration
         with self._lock:
+            # Clean expired items first
+            now = time.time()
+            expired_keys = [k for k, (_, exp) in self._cache.items() if now > exp]
+            for k in expired_keys:
+                del self._cache[k]
+                
+            # Evict if full
+            if len(self._cache) >= self._max_size and key not in self._cache:
+                oldest_key = next(iter(self._cache))
+                del self._cache[oldest_key]
+                
             self._cache[key] = (value, expiry)
 
     def clear(self) -> None:
@@ -30,5 +42,6 @@ class Cache:
             self._cache.clear()
 
 # Global instances for DNS and other resources
-dns_cache = Cache(default_ttl=3600.0)  # 1 hour for DNS
-general_cache = Cache(default_ttl=60.0)  # 1 minute for general lookups (e.g. public IP)
+dns_cache = Cache(default_ttl=3600.0, max_size=2000)  # 1 hour for DNS, max 2000 items
+general_cache = Cache(default_ttl=60.0, max_size=1000)  # 1 minute for general lookups, max 1000 items
+

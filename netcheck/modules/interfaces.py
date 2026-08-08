@@ -26,19 +26,31 @@ def get_active_local_ip() -> str:
     finally:
         s.close()
 
-def get_public_ip(timeout: float = 3.0) -> str:
-    """Retrieves public IP address from public APIs."""
+def get_public_ip(timeout: float = 1.5) -> str:
+    """Retrieves public IP address from public APIs concurrently."""
     import urllib.request
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
     services = ["https://api.ipify.org", "https://ifconfig.me", "https://icanhazip.com"]
-    for service in services:
+    
+    def fetch_ip(url: str) -> Optional[str]:
         try:
-            req = urllib.request.Request(service, headers={'User-Agent': 'NetCheck/2.0'})
+            req = urllib.request.Request(url, headers={'User-Agent': 'NetCheck/2.0'})
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 ip = response.read().decode('utf-8').strip()
-                if ip:
+                if ip and (re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', ip) or ':' in ip):
                     return ip
         except Exception:
-            continue
+            pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(services)) as executor:
+        futures = {executor.submit(fetch_ip, url): url for url in services}
+        for fut in as_completed(futures):
+            res = fut.result()
+            if res:
+                return res
+                
     return "Unknown"
 
 def get_default_gateway() -> Tuple[Optional[str], Optional[str]]:
@@ -83,7 +95,7 @@ def get_default_gateway() -> Tuple[Optional[str], Optional[str]]:
         
     return None, None
 
-def get_network_interfaces(all_interfaces: bool = False, timeout: float = 3.0) -> Dict[str, Any]:
+def get_network_interfaces(all_interfaces: bool = False, include_public: bool = False, timeout: float = 1.5) -> Dict[str, Any]:
     """
     Identifies local network interfaces, their status, IPv4/IPv6 addresses,
     and flags the primary active connection.
@@ -96,9 +108,9 @@ def get_network_interfaces(all_interfaces: bool = False, timeout: float = 3.0) -
     if plat == "windows":
         interfaces = _parse_windows_ipconfig()
     elif plat == "darwin":
-        interfaces = _parse_unix_ifconfig()
+        interfaces = _parse_unix_ifconfig(all_interfaces)
     else:
-        interfaces = _parse_linux_ip_addr()
+        interfaces = _parse_linux_ip_addr(all_interfaces)
         
     # If no interfaces were parsed but we have a primary IP, insert a dummy entry
     if not interfaces and primary_ip != "127.0.0.1":
@@ -131,13 +143,17 @@ def get_network_interfaces(all_interfaces: bool = False, timeout: float = 3.0) -
     gateway_ip, gateway_dev = get_default_gateway()
     
     # Get public IP
-    public_ip = get_public_ip(timeout=timeout)
+    if include_public and primary_ip != "127.0.0.1":
+        public_ip = get_public_ip(timeout=timeout)
+    else:
+        public_ip = "Unknown"
     
     # Filter active only if all_interfaces is False
     if not all_interfaces:
         interfaces = {name: iface for name, iface in interfaces.items() if iface.get("status") == "UP"}
 
     return {
+        "type": "interfaces",
         "target": "interfaces",
         "status": "SUCCESS",
         "latency_ms": 0.0,
@@ -149,11 +165,40 @@ def get_network_interfaces(all_interfaces: bool = False, timeout: float = 3.0) -
             "gateway_ip": gateway_ip,
             "gateway_dev": gateway_dev,
             "public_ip": public_ip,
+            "public_ip_checked": include_public,
             "all_interfaces_shown": all_interfaces
         }
     }
 
-def _parse_linux_ip_addr() -> Dict[str, Any]:
+
+def check_listening_ports() -> Dict[str, Any]:
+    """
+    Identifies all local active listening TCP sockets, process names, PIDs,
+    and maps them to Docker container names where applicable.
+    """
+    try:
+        ports = get_listening_ports()
+        success = True
+        error = None
+    except Exception as e:
+        ports = []
+        success = False
+        error = str(e)
+
+    return {
+        "type": "ports",
+        "target": "ports",
+        "status": "SUCCESS" if success else "FAILED",
+        "latency_ms": 0.0,
+        "success": success,
+        "error": error,
+        "metadata": {
+            "listening_ports": ports
+        }
+    }
+
+
+def _parse_linux_ip_addr(all_interfaces: bool = False) -> Dict[str, Any]:
     interfaces = {}
     try:
         proc = subprocess.run(["ip", "addr", "show"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -163,7 +208,7 @@ def _parse_linux_ip_addr() -> Dict[str, Any]:
                 iface_match = re.match(r"^\d+:\s+([^:]+):", line)
                 if iface_match:
                     current_iface = iface_match.group(1).strip()
-                    if current_iface == "lo" or current_iface.startswith("veth"):
+                    if not all_interfaces and (current_iface == "lo" or current_iface.startswith("veth")):
                         current_iface = None
                         continue
                     
@@ -195,10 +240,10 @@ def _parse_linux_ip_addr() -> Dict[str, Any]:
                             interfaces[current_iface]["ipv6"].append(ip6)
     except Exception:
         # Fallback to ifconfig
-        return _parse_unix_ifconfig()
+        return _parse_unix_ifconfig(all_interfaces)
     return interfaces
 
-def _parse_unix_ifconfig() -> Dict[str, Any]:
+def _parse_unix_ifconfig(all_interfaces: bool = False) -> Dict[str, Any]:
     interfaces = {}
     try:
         proc = subprocess.run(["ifconfig"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -209,7 +254,7 @@ def _parse_unix_ifconfig() -> Dict[str, Any]:
                     parts = line.split(":")
                     if len(parts) > 0:
                         current_iface = parts[0].strip()
-                        if current_iface.startswith("lo") or current_iface.startswith("veth"):
+                        if not all_interfaces and (current_iface.startswith("lo") or current_iface.startswith("veth")):
                             current_iface = None
                             continue
                         state = "DOWN"
@@ -266,3 +311,197 @@ def _parse_windows_ipconfig() -> Dict[str, Any]:
     except Exception:
         pass
     return interfaces
+
+def get_docker_port_mappings() -> Dict[int, str]:
+    mappings = {}
+    try:
+        proc = subprocess.run(["docker", "ps", "--format", "{{.Ports}}\t{{.Names}}"], 
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                if not line.strip():
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    ports_str, name = parts[0], parts[1]
+                    for port_match in re.findall(r'(?::| )(\d+)->', ports_str):
+                        mappings[int(port_match)] = f"Docker: {name}"
+    except Exception:
+        pass
+    return mappings
+
+def _get_listening_ports_windows(docker_mappings: Dict[int, str]) -> List[Dict[str, Any]]:
+    ports = []
+    pid_map = {}
+    try:
+        proc = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], 
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            import csv
+            import io
+            reader = csv.reader(io.StringIO(proc.stdout))
+            for row in reader:
+                if len(row) >= 2:
+                    pid_map[row[1]] = row[0]
+    except Exception:
+        pass
+        
+    try:
+        proc = subprocess.run(["netstat", "-ano"], 
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                if "LISTENING" not in line:
+                    continue
+                parts = line.strip().split()
+                if len(parts) >= 5:
+                    proto = parts[0]
+                    local_addr = parts[1]
+                    pid = parts[4]
+                    if ":" in local_addr:
+                        addr, port_str = local_addr.rsplit(":", 1)
+                        try:
+                            port = int(port_str)
+                        except ValueError:
+                            continue
+                        proc_name = pid_map.get(pid, f"PID {pid}")
+                        if port in docker_mappings:
+                            proc_name = f"{docker_mappings[port]} (container)"
+                        elif not proc_name or proc_name.lower().startswith("pid"):
+                            from netcheck.utils.services import get_service_name
+                            srv = get_service_name(port)
+                            if srv:
+                                proc_name = srv
+                        ports.append({
+                            "proto": proto,
+                            "address": addr,
+                            "port": port,
+                            "process": proc_name,
+                            "pid": pid
+                        })
+    except Exception:
+        pass
+    return ports
+
+def _get_listening_ports_unix(docker_mappings: Dict[int, str]) -> List[Dict[str, Any]]:
+    ports = []
+    try:
+        proc = subprocess.run(["ss", "-tlnp"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                if "LISTEN" not in line:
+                    continue
+                parts = line.strip().split()
+                if len(parts) >= 4:
+                    local_addr = parts[3]
+                    if ":" in local_addr:
+                        addr, port_str = local_addr.rsplit(":", 1)
+                        if "%" in addr:
+                            addr = addr.split("%")[0]
+                        try:
+                            port = int(port_str)
+                        except ValueError:
+                            continue
+                        proc_name = ""
+                        pid = ""
+                        if len(parts) >= 6:
+                            proc_col = " ".join(parts[5:])
+                            m = re.search(r'users:\(\("([^"]+)",pid=(\d+)', proc_col)
+                            if m:
+                                proc_name = m.group(1)
+                                pid = m.group(2)
+                        if port in docker_mappings:
+                            proc_name = f"{docker_mappings[port]} (container)"
+                        elif proc_name == "docker-proxy":
+                            proc_name = "Docker Proxy"
+                        elif not proc_name:
+                            from netcheck.utils.services import get_service_name
+                            srv = get_service_name(port)
+                            if srv:
+                                proc_name = srv
+                            else:
+                                proc_name = "Unknown"
+                        ports.append({
+                            "proto": "TCP",
+                            "address": addr,
+                            "port": port,
+                            "process": proc_name,
+                            "pid": pid
+                        })
+            return ports
+    except Exception:
+        pass
+
+    try:
+        proc = subprocess.run(["lsof", "-iTCP", "-sTCP:LISTEN", "-P", "-n"], 
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                if line.startswith("COMMAND") or not line.strip():
+                    continue
+                parts = line.strip().split()
+                if len(parts) >= 9:
+                    command = parts[0]
+                    pid = parts[1]
+                    name_col = parts[8]
+                    if ":" in name_col:
+                        addr, port_str = name_col.rsplit(":", 1)
+                        try:
+                            port = int(port_str)
+                        except ValueError:
+                            continue
+                        proc_name = command
+                        if port in docker_mappings:
+                            proc_name = f"{docker_mappings[port]} (container)"
+                        elif proc_name == "docker-proxy":
+                            proc_name = "Docker Proxy"
+                        ports.append({
+                            "proto": "TCP",
+                            "address": addr,
+                            "port": port,
+                            "process": proc_name,
+                            "pid": pid
+                        })
+            return ports
+    except Exception:
+        pass
+
+    try:
+        proc = subprocess.run(["netstat", "-tln"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                if "LISTEN" not in line:
+                    continue
+                parts = line.strip().split()
+                if len(parts) >= 4:
+                    local_addr = parts[3]
+                    if ":" in local_addr:
+                        addr, port_str = local_addr.rsplit(":", 1)
+                        try:
+                            port = int(port_str)
+                        except ValueError:
+                            continue
+                        proc_name = ""
+                        if port in docker_mappings:
+                            proc_name = f"{docker_mappings[port]} (container)"
+                        else:
+                            from netcheck.utils.services import get_service_name
+                            srv = get_service_name(port)
+                            proc_name = srv if srv else "Unknown"
+                        ports.append({
+                            "proto": "TCP",
+                            "address": addr,
+                            "port": port,
+                            "process": proc_name,
+                            "pid": ""
+                        })
+    except Exception:
+        pass
+    return ports
+
+def get_listening_ports() -> List[Dict[str, Any]]:
+    plat = platform.system().lower()
+    docker_mappings = get_docker_port_mappings()
+    if plat == "windows":
+        return _get_listening_ports_windows(docker_mappings)
+    return _get_listening_ports_unix(docker_mappings)

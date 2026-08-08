@@ -1,319 +1,124 @@
-# Publishing Quick Reference
+# Publishing Quick Reference (v2.3.0)
 
-## 📦 What We Have
+## 📦 Distribution Methods
 
-You now have **3 ways** to distribute your `netcheck` tool:
+You now have a unified, Python-based pipeline to package and publish the `netcheck` tool across multiple platforms.
 
-| Method | Command | Users Install With | Best For |
-|--------|---------|-------------------|----------|
-| **Manual** | `sudo ./install.sh` | Same | Development, local testing |
-| **DEB Package** | `./build-deb.sh` | `sudo dpkg -i netcheck_1.2.0.deb` | Debian/Ubuntu users |
-| **Snap Package** | `./build-snap.sh` | `sudo snap install netcheck` | All Linux distributions |
-
----
-
-## 🎯 Makefile Purpose
-
-### What is a Makefile?
-A **build automation tool** that provides convenient shortcuts for common tasks.
-
-### Why do we need it?
-Instead of typing long commands, users can type simple ones:
-
-```bash
-# Without Makefile - Hard to remember
-sudo bash install.sh
-rm -f result.txt fail-*.txt combined-*.txt
-
-# With Makefile - Easy to remember
-make install
-make clean
-```
-
-### Available Commands
-```bash
-make              # Show help
-make install      # Install system-wide (sudo ./install.sh)
-make uninstall    # Remove installation (sudo ./uninstall.sh)
-make test         # Run basic tests
-make clean        # Remove temporary files
-```
-
-### Professional Standard
-Most open-source projects use Makefiles. Users expect these commands:
-- ✅ `make install` - Universal installation command
-- ✅ `make test` - Standard testing command
-- ✅ `make clean` - Standard cleanup command
+| Method | Build Command | Publish Command / Store | Target Users |
+|--------|---------------|-------------------------|--------------|
+| **Manual** | — | `sudo make install` | Development, local testing |
+| **PyPI (pip)** | `python build_packages.py --pypi` | `python publish_packages.py --pypi` | All Python developers (`pip install netcheckx`) |
+| **DEB Package** | `python build_packages.py --deb` | GitHub Releases or APT repository | Debian / Ubuntu / Linux Mint |
+| **RPM Package** | `python build_packages.py --rpm` | GitHub Releases or RPM repository | Fedora / RHEL / CentOS |
+| **Snap Package** | `python build_packages.py --snap` | `python publish_packages.py --snap` | Universal Linux (Ubuntu, Arch, Fedora, etc.) |
+| **Windows Installer** | `python build_packages.py --win` | GitHub Releases / Chocolatey | Windows Command Line / GUI Users |
+| **macOS PKG** | `python build_packages.py --mac` | GitHub Releases | macOS Command Line Users |
 
 ---
 
-## 📥 DEB Package (Ubuntu/Debian)
+## 🎯 Orchestrators Quick Start
 
-### What is it?
-A `.deb` file is the standard package format for Debian-based Linux (Ubuntu, Debian, Linux Mint, etc.)
+Instead of scattered Bash scripts, `netcheck` utilizes two main orchestrators:
 
-### Build DEB Package
+### 1. `build_packages.py` (Building)
+Runs platform-aware package compilers to generate final installation assets in the `dist/` directory.
+
 ```bash
-./build-deb.sh
-# Creates: netcheck_1.2.0.deb
+# Verify which packaging compilers are installed on your current host
+python build_packages.py --check
+
+# Bump/Synchronise version across pyproject.toml, __init__.py, and metadata config templates
+python build_packages.py --sync-version 2.3.0
+
+# Build PyPI distribution files (wheel + sdist)
+python build_packages.py --pypi
+
+# Build Snap packages
+python build_packages.py --snap
+
+# Build DEB packages
+python build_packages.py --deb
+
+# Build RPM packages
+python build_packages.py --rpm
+
+# Build Windows binaries (EXE + NSIS Installer + Chocolatey .nupkg)
+python build_packages.py --win
+
+# Build all packages supported by the current OS
+python build_packages.py --all
 ```
 
-### Test Locally
+### 2. `publish_packages.py` (Publishing)
+Automates the secure upload of compiled packages from the `dist/` folder to public registries.
+
 ```bash
-# Install
-sudo dpkg -i netcheck_1.2.0.deb
+# Verify available credentials and publishing tools (twine, snapcraft, choco, gh)
+python publish_packages.py --check
 
-# Fix dependencies if needed
-sudo apt-get install -f
+# Upload wheel + source distribution to TestPyPI
+python publish_packages.py --pypi --test
 
-# Test
-netcheck --help
-netcheck -q google.com 443
+# Upload to production PyPI (requires TWINE_USERNAME / TWINE_PASSWORD or API token)
+python publish_packages.py --pypi
 
-# Uninstall
-sudo apt remove netcheck
-```
+# Upload and release Snap package to the Snap Store stable channel
+python publish_packages.py --snap
 
-### Publish Options
+# Upload Snap to a custom testing channel (e.g. edge or beta)
+python publish_packages.py --snap --channel edge
 
-#### Option 1: Ubuntu PPA (Free, Easy)
-```bash
-# 1. Create account at https://launchpad.net/
-# 2. Install tools
-sudo apt install devscripts debhelper
+# Upload Windows Chocolatey package to Chocolatey.org (requires CHOCO_API_KEY)
+python publish_packages.py --chocolatey
 
-# 3. Upload to PPA
-dput ppa:yourusername/netcheck netcheck_1.0.0.deb
-
-# 4. Users install with:
-sudo add-apt-repository ppa:yourusername/netcheck
-sudo apt update
-sudo apt install netcheck
-```
-
-#### Option 2: GitHub Releases (Simple)
-```bash
-# 1. Create GitHub release
-# 2. Upload netcheck_1.2.0.deb as asset
-# 3. Users download and install:
-wget https://github.com/user/netcheck/releases/download/v1.2.0/netcheck_1.2.0.deb
-sudo dpkg -i netcheck_1.2.0.deb
-```
-
-#### Option 3: Custom Repository (Advanced)
-```bash
-# Host .deb on your own server
-# See DEB_PACKAGING.md for full instructions
+# Create a GitHub Release v2.3.0 and attach all compiled assets from dist/
+python publish_packages.py --github-release v2.3.0
 ```
 
 ---
 
-## 📦 Snap Package (Universal Linux)
+## 📥 Platform Publishing Details
 
-### What is it?
-A **universal package** that works on Ubuntu, Debian, Fedora, Arch, and other distributions. Auto-updates included!
+### 1. PyPI / Pip
+- **Distribution Name**: `netcheckx` (to avoid conflicts with existing packages).
+- **Executable Aliases**: Both `netcheck` and `netcheckx` CLI commands are available post-installation.
+- **Upload Tool**: Uses `twine`. Ensure you install twine: `pip install twine`.
 
-### Prerequisites
-```bash
-# Install snapcraft
-sudo snap install snapcraft --classic
-```
+### 2. Universal Linux (Snap Store)
+- **Account Registration**: Sign up at https://snapcraft.io/ using an Ubuntu One account.
+- **Classic confinement vs strict**: Netcheck uses strict confinement but plugs `network-observe` and `system-observe` to allow pinging and process mapping.
+- **Command flow**:
+  1. `snapcraft login`
+  2. `python build_packages.py --snap`
+  3. `python publish_packages.py --snap`
+- **User Installation**:
+  ```bash
+  sudo snap install netcheck
+  sudo snap connect netcheck:network-observe
+  sudo snap connect netcheck:system-observe
+  ```
 
-### Build Snap Package
-```bash
-./build-snap.sh
-# Creates: netcheck_1.0.0_amd64.snap
-```
+### 3. Debian / Ubuntu (`.deb`)
+- **Compilation**: Runs `dpkg-buildpackage` under the hood. Requires `build-essential devscripts debhelper fakeroot dh-python python3-all`.
+- **Install locally**:
+  ```bash
+  sudo dpkg -i dist/deb/netcheck_2.3.0-1_all.deb
+  ```
 
-### Test Locally
-```bash
-# Install in devmode (for testing)
-sudo snap install netcheck_1.0.0_amd64.snap --devmode --dangerous
-
-# Test
-netcheck --help
-netcheck -q google.com 443
-
-# Check logs if issues
-snap logs netcheck
-
-# Uninstall
-sudo snap remove netcheck
-```
-
-### Publish to Snap Store (Recommended!)
-
-#### Step 1: Create Account
-- Go to https://snapcraft.io/
-- Sign up with Ubuntu One account
-
-#### Step 2: Login
-```bash
-snapcraft login
-```
-
-#### Step 3: Register Name (One-time)
-```bash
-snapcraft register netcheck
-```
-
-#### Step 4: Upload Package
-```bash
-snapcraft upload netcheck_1.0.0_amd64.snap
-# Returns revision number (e.g., 1)
-```
-
-#### Step 5: Release to Channel
-```bash
-# Release to stable (production)
-snapcraft release netcheck 1 stable
-
-# Or test first with beta
-snapcraft release netcheck 1 beta
-```
-
-#### Step 6: Check Status
-```bash
-snapcraft status netcheck
-```
-
-#### Users Install From Store
-```bash
-# One simple command - works on ALL Linux!
-sudo snap install netcheck
-
-# Auto-updates enabled by default! 🎉
-```
+### 4. Windows (NSIS & Chocolatey)
+- **EXE & NSIS**: Built via PyInstaller and NSIS. Outputs `netcheck-2.3.0-setup.exe` in `dist/win/`.
+- **Chocolatey**: Outputs `netcheck.2.3.0.nupkg` in `dist/choco/`. Push using `python publish_packages.py --chocolatey`.
 
 ---
 
-## 🚀 Publishing Comparison
+## 📋 Release Checklist
 
-### DEB Package
-**Pros:**
-- ✅ Standard for Debian/Ubuntu
-- ✅ No sandboxing restrictions
-- ✅ Can use `apt` commands
-- ✅ Familiar to sysadmins
-
-**Cons:**
-- ❌ Only works on Debian-based distros
-- ❌ Manual updates required
-- ❌ Dependency management needed
-
-**Best for:** Traditional Linux users, enterprise environments
-
-### Snap Package
-**Pros:**
-- ✅ Works on ALL Linux distributions
-- ✅ Auto-updates automatically
-- ✅ Sandboxed (more secure)
-- ✅ Single Snap Store for all distros
-- ✅ Easy CI/CD integration
-
-**Cons:**
-- ❌ Slightly larger package size
-- ❌ Sandboxing can limit functionality
-- ❌ Requires snapd installed
-
-**Best for:** Cross-distribution support, auto-updates
-
-### Recommendation
-**Publish BOTH!**
-- DEB for traditional Debian/Ubuntu users
-- Snap for universal compatibility and auto-updates
-
----
-
-## 📋 Publishing Checklist
-
-### Before Publishing
-- [ ] Test all features work correctly
-- [ ] Update version number in all files
-- [ ] Update README.md with installation instructions
-- [ ] Create GitHub repository (if not exists)
-- [ ] Add LICENSE file (GPL v3 included)
-- [ ] Test installation on clean system
-
-### DEB Package
-- [ ] Build: `./build-deb.sh`
-- [ ] Test: `sudo dpkg -i netcheck_1.0.0.deb`
-- [ ] Verify: `netcheck --help`
-- [ ] Create GitHub release
-- [ ] Upload .deb as release asset
-- [ ] Update README with download link
-
-### Snap Package
-- [ ] Build: `./build-snap.sh`
-- [ ] Test: `sudo snap install netcheck_*.snap --devmode --dangerous`
-- [ ] Verify: `netcheck --help`
-- [ ] Create Snapcraft.io account
-- [ ] Login: `snapcraft login`
-- [ ] Register: `snapcraft register netcheck`
-- [ ] Upload: `snapcraft upload netcheck_*.snap`
-- [ ] Release: `snapcraft release netcheck <rev> stable`
-- [ ] Update README with snap install command
-
----
-
-## 📖 Files Summary
-
-| File | Purpose |
-|------|---------|
-| `Makefile` | Build automation shortcuts |
-| `MAKEFILE_GUIDE.md` | Explains Makefile purpose |
-| `DEB_PACKAGING.md` | Full DEB packaging guide |
-| `SNAP_PACKAGING.md` | Full Snap packaging guide |
-| `build-deb.sh` | Automated DEB builder |
-| `build-snap.sh` | Automated Snap builder |
-
----
-
-## 🎓 Summary
-
-### Makefile
-- Provides **convenient shortcuts** (`make install`, `make test`)
-- Industry **standard practice**
-- Makes project **professional**
-
-### DEB Package
-- For **Debian/Ubuntu** users
-- Traditional package format
-- Can publish to **Ubuntu PPA** or GitHub releases
-
-### Snap Package
-- For **ALL Linux distributions**
-- **Auto-updates** automatically
-- Publish to **Snap Store** (recommended!)
-
-### Quick Start
-```bash
-# Build both packages
-./build-deb.sh    # Creates .deb
-./build-snap.sh   # Creates .snap
-
-# Test DEB
-sudo dpkg -i netcheck_1.0.0.deb
-
-# Test Snap
-sudo snap install netcheck_1.0.0_amd64.snap --devmode --dangerous
-
-# Publish Snap (easiest!)
-snapcraft login
-snapcraft register netcheck
-snapcraft upload netcheck_1.0.0_amd64.snap
-snapcraft release netcheck 1 stable
-```
-
----
-
-## 📚 Resources
-
-- **Snap Store**: https://snapcraft.io/
-- **Launchpad (PPA)**: https://launchpad.net/
-- **Debian Packaging**: https://www.debian.org/doc/manuals/maint-guide/
-- **Snapcraft Docs**: https://snapcraft.io/docs
-
----
-
-**Recommendation:** Start with **Snap** - it's the easiest to publish and works everywhere!
+- [ ] Test code: `python -m pytest`
+- [ ] Sync version to 2.3.0: `python build_packages.py --sync-version 2.3.0`
+- [ ] Document changes in `CHANGELOG.md` and `docs/releases/RELEASE_NOTES_V2.3.0.md`
+- [ ] Build all binaries: `python build_packages.py --all`
+- [ ] Check publish tools: `python publish_packages.py --check`
+- [ ] Publish to PyPI: `python publish_packages.py --pypi`
+- [ ] Publish Snap: `python publish_packages.py --snap`
+- [ ] Publish Chocolatey (if on Windows): `python publish_packages.py --chocolatey`
+- [ ] Create GitHub Release with all assets: `python publish_packages.py --github-release v2.3.0`

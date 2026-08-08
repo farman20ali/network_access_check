@@ -1,451 +1,141 @@
-# Publishing as DEB Package (for Ubuntu/Debian)
+# Debian Packaging with `build_packages.py` (v2.3.0)
 
 ## Overview
 
-A **.deb** package is the standard software package format for Debian-based Linux distributions (Ubuntu, Debian, Linux Mint, etc.).
+A **.deb** package is the standard software package format for Debian-based Linux distributions (Ubuntu, Debian, Linux Mint, etc.). Instead of creating and maintaining debian structure files manually, `netcheck` automates the build process using the `build_packages.py` orchestrator.
 
-## Directory Structure
+---
 
-```bash
-netcheck-1.0.0/
-├── DEBIAN/
-│   ├── control          # Package metadata
-│   ├── postinst         # Post-installation script
-│   └── prerm            # Pre-removal script
-└── usr/
-    ├── local/
-    │   └── bin/
-    │       └── netcheck # Main script
-    └── share/
-        ├── man/
-        │   └── man1/
-        │       └── netcheck.1.gz  # Man page
-        └── doc/
-            └── netcheck/
-                ├── README.md
-                ├── EXAMPLES.md
-                └── copyright
-```
+## The Build Process
 
-## Step-by-Step Guide
+When you run `python build_packages.py --deb`, the builder executes the following steps:
 
-### 1. Create Package Structure
+1. **Verify Prerequisites**: Checks that `dpkg-buildpackage` and `fakeroot` are installed on the system.
+2. **Create Temporary Workspace**: Spawns a unique temporary directory (e.g. `/tmp/netcheck-deb-XXXXXX`) and copies the codebase, excluding development artifacts (like `.git`, `.venv`, and test caches).
+3. **Write Debian Skeleton**: Dynamically writes a standard Debian package layout under a new `debian/` folder.
+4. **Compile Package**: Runs `dpkg-buildpackage -us -uc -rfakeroot` inside the temporary workspace.
+5. **Collect Artifact**: Extracts the generated `.deb` package and copies it into the project's root `dist/deb/` directory, cleaning up all intermediate files.
 
-```bash
-#!/bin/bash
-# build-deb.sh
+---
 
-VERSION="1.0.0"
-PACKAGE_NAME="netcheck"
-BUILD_DIR="${PACKAGE_NAME}_${VERSION}"
+## Dynamically Generated Debian Layout
 
-# Create directory structure
-mkdir -p "${BUILD_DIR}/DEBIAN"
-mkdir -p "${BUILD_DIR}/usr/local/bin"
-mkdir -p "${BUILD_DIR}/usr/share/man/man1"
-mkdir -p "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}"
-mkdir -p "${BUILD_DIR}/etc/bash_completion.d"
+The dynamically generated skeleton is written to conform strictly to Debian packaging standards:
 
-# Copy main script
-cp check_ip.sh "${BUILD_DIR}/usr/local/bin/netcheck"
-chmod 755 "${BUILD_DIR}/usr/local/bin/netcheck"
-
-# Copy documentation
-cp README.md EXAMPLES.md INSTALL.md "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}/"
-gzip -9 < README.md > "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}/README.gz"
-
-# Create man page
-./install.sh --man-only  # Or manually create
-gzip -9c netcheck.1 > "${BUILD_DIR}/usr/share/man/man1/netcheck.1.gz"
-
-# Create bash completion
-cat << 'EOF' > "${BUILD_DIR}/etc/bash_completion.d/netcheck"
-_netcheck() {
-    local cur prev opts
-    COMPREPLY=()
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="-t -j -v -f -c -q --timeout --jobs --verbose --format --combined --quick --csv --help --version"
-
-    case "${prev}" in
-        -f|--format)
-            COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) )
-            return 0
-            ;;
-        -t|--timeout)
-            COMPREPLY=( $(compgen -W "1 2 3 5 10" -- ${cur}) )
-            return 0
-            ;;
-        -j|--jobs)
-            COMPREPLY=( $(compgen -W "10 20 50 100" -- ${cur}) )
-            return 0
-            ;;
-        *)
-            ;;
-    esac
-
-    COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
-    return 0
-}
-complete -F _netcheck netcheck
-EOF
-chmod 644 "${BUILD_DIR}/etc/bash_completion.d/netcheck"
-
-# Create copyright file
-cat << 'EOF' > "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}/copyright"
-Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: netcheck
-Source: https://github.com/yourusername/netcheck
-
-Files: *
-Copyright: 2025 Your Name <your.email@example.com>
-License: GPL-3.0+
-
-License: GPL-3.0+
- This program is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
- .
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- GNU General Public License for more details.
- .
- You should have received a copy of the GNU General Public License
- along with this program. If not, see <https://www.gnu.org/licenses/>.
- .
- On Debian systems, the complete text of the GNU General Public License
- version 3 can be found in "/usr/share/common-licenses/GPL-3".
-EOF
-
-echo "Package structure created: ${BUILD_DIR}"
-```
-
-### 2. Create DEBIAN/control File
-
-```bash
-cat << 'EOF' > "${BUILD_DIR}/DEBIAN/control"
-Package: netcheck
-Version: 1.0.0
+### 1. `debian/control`
+Declares the package metadata, architecture, dependencies, and descriptions:
+```ini
+Source: netcheck
 Section: utils
 Priority: optional
+Maintainer: netcheck builder <netcheck@example.com>
+Build-Depends: debhelper-compat (= 12)
+Standards-Version: 4.6.2
+Homepage: https://github.com/farman20ali/network_access_check
+Rules-Requires-Root: no
+
+Package: netcheck
 Architecture: all
-Depends: bash (>= 4.0), telnet | netcat-openbsd | netcat-traditional
-Maintainer: Your Name <your.email@example.com>
-Description: Network connectivity checker with advanced features
- A powerful bash-based network connectivity testing tool that supports:
-  - Parallel connection testing
-  - IP range and CIDR notation
-  - Port ranges and multiple ports
-  - CSV file input
-  - Multiple output formats (text, JSON, CSV, XML)
-  - Quick test mode
-  - Progress tracking
- .
- Perfect for system administrators, DevOps engineers, and network diagnostics.
-Homepage: https://github.com/yourusername/netcheck
-EOF
+Depends: ${misc:Depends}, python3, python3-cryptography, iproute2 | net-tools, iputils-ping
+Description: Network connectivity checker (DNS, ping, HTTP, TCP, SSL)
+ A cross-platform Python 3 engine for network diagnostics.
+ Supports JSON/CSV/XML output, MCP server, and batch target testing.
 ```
 
-### 3. Create Post-Installation Script
+### 2. `debian/rules`
+The execution script that automates compilation and installation steps during build:
+```makefile
+#!/usr/bin/make -f
 
-```bash
-cat << 'EOF' > "${BUILD_DIR}/DEBIAN/postinst"
-#!/bin/bash
-set -e
+%:
+	dh $@
 
-# Update man page database
-if command -v mandb > /dev/null 2>&1; then
-    mandb -q 2>/dev/null || true
-fi
+override_dh_auto_install:
+	install -d debian/netcheck/usr/bin
+	install -d debian/netcheck/usr/lib/python3/dist-packages
+	cp -r netcheck debian/netcheck/usr/lib/python3/dist-packages/
+	find debian/netcheck/usr/lib/python3/dist-packages/netcheck -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+	printf '#!/usr/bin/env python3\nimport sys\nfrom netcheck.cli import main\nsys.exit(main())\n' > debian/netcheck/usr/bin/netcheck
+	chmod 755 debian/netcheck/usr/bin/netcheck
 
-# Check for required dependencies
-if ! command -v telnet > /dev/null 2>&1 && ! command -v nc > /dev/null 2>&1; then
-    echo ""
-    echo "WARNING: Neither telnet nor netcat (nc) is installed."
-    echo "Please install one of them:"
-    echo "  sudo apt install telnet"
-    echo "  sudo apt install netcat-openbsd"
-    echo ""
-fi
-
-echo ""
-echo "netcheck installed successfully!"
-echo "Run 'netcheck --help' to get started."
-echo ""
-
-exit 0
-EOF
-chmod 755 "${BUILD_DIR}/DEBIAN/postinst"
+override_dh_auto_test:
+	true
 ```
 
-### 4. Create Pre-Removal Script
+### 3. `debian/copyright`
+Provides standard licensing information (GPL-3) required by lint tools like Lintian.
 
-```bash
-cat << 'EOF' > "${BUILD_DIR}/DEBIAN/prerm"
-#!/bin/bash
-set -e
+### 4. `debian/changelog`
+Declares the version history. Formatted using standard RFC 2822 timestamps:
+```text
+netcheck (2.3.0-1) stable; urgency=medium
 
-# Clean up any temporary files if they exist
-rm -f /tmp/netcheck-*.tmp 2>/dev/null || true
+  * Release 2.3.0 — cross-platform Python 3 engine.
 
-exit 0
-EOF
-chmod 755 "${BUILD_DIR}/DEBIAN/prerm"
+ -- netcheck builder <netcheck@example.com>  Thu, 30 Jul 2026 21:00:00 +0000
 ```
 
-### 5. Build the Package
+### 5. `debian/source/format`
+Contains `3.0 (native)` to specify a native source package.
 
+---
+
+## How to Build
+
+### Prerequisites
+Install compilation requirements on your Debian/Ubuntu machine:
 ```bash
-# Build the .deb package
-dpkg-deb --build "${BUILD_DIR}"
-
-# Check the package
-dpkg-deb --info "${BUILD_DIR}.deb"
-dpkg-deb --contents "${BUILD_DIR}.deb"
-
-# Verify with lintian (checks for common issues)
-sudo apt install lintian -y
-lintian "${BUILD_DIR}.deb"
-
-echo ""
-echo "Package created: ${BUILD_DIR}.deb"
-echo ""
+sudo apt install build-essential devscripts debhelper fakeroot dh-python python3-all
 ```
 
-### 6. Test Installation
-
+### Run Builder
 ```bash
-# Install locally
-sudo dpkg -i netcheck_1.0.0.deb
+python build_packages.py --deb
+```
+**Output**: The compiled package will be available at `dist/deb/netcheck_2.3.0-1_all.deb`.
 
-# Fix dependencies if needed
-sudo apt-get install -f
+---
 
-# Test
-netcheck --help
-netcheck -q google.com 443
+## Local Verification & Installation
 
-# Uninstall
+Install the compiled `.deb` package locally to test its behaviour:
+```bash
+# Install package
+sudo dpkg -i dist/deb/netcheck_2.3.0-1_all.deb
+
+# Verify installation path
+which netcheck
+# -> /usr/bin/netcheck
+
+# Verify runtime execution
+netcheck --version
+netcheck tcp google.com 443 --json
+```
+
+To remove the package:
+```bash
 sudo apt remove netcheck
 ```
 
-## Publishing to APT Repository
+---
 
-### Option 1: Ubuntu PPA (Personal Package Archive)
+## Publishing Options
 
+### 1. GitHub Releases
+The easiest way is to attach the generated `.deb` package to a GitHub release.
 ```bash
-# 1. Create Launchpad account
-# Visit: https://launchpad.net/
-
-# 2. Install packaging tools
-sudo apt install devscripts debhelper dh-make
-
-# 3. Create source package
-cd netcheck-1.0.0
-debuild -S -sa
-
-# 4. Upload to PPA
-dput ppa:yourusername/netcheck ../netcheck_1.0.0_source.changes
-
-# 5. Users can install with:
-sudo add-apt-repository ppa:yourusername/netcheck
-sudo apt update
-sudo apt install netcheck
+python publish_packages.py --github-release v2.3.0
+```
+Users can then download and install it manually:
+```bash
+wget https://github.com/farman20ali/network_access_check/releases/download/v2.3.0/netcheck_2.3.0-1_all.deb
+sudo dpkg -i netcheck_2.3.0-1_all.deb
+sudo apt-get install -f  # resolves any missing dependencies
 ```
 
-### Option 2: Custom APT Repository
-
-```bash
-# 1. Set up web server (GitHub Pages, S3, etc.)
-
-# 2. Create repository structure
-mkdir -p apt-repo/pool/main
-mkdir -p apt-repo/dists/stable/main/binary-amd64
-
-# 3. Copy package
-cp netcheck_1.0.0.deb apt-repo/pool/main/
-
-# 4. Generate Packages file
-cd apt-repo
-dpkg-scanpackages pool/main /dev/null | gzip -9c > dists/stable/main/binary-amd64/Packages.gz
-
-# 5. Create Release file
-cd dists/stable
-cat << EOF > Release
-Origin: Your Name
-Label: netcheck
-Suite: stable
-Codename: stable
-Architectures: amd64 all
-Components: main
-Description: Network connectivity checker repository
-EOF
-
-# 6. Sign the repository (optional but recommended)
-gpg --armor --detach-sign -o Release.gpg Release
-
-# 7. Upload to web server
-
-# 8. Users can add your repository:
-echo "deb https://your-domain.com/apt-repo stable main" | sudo tee /etc/apt/sources.list.d/netcheck.list
-sudo apt update
-sudo apt install netcheck
-```
-
-## Complete Build Script
-
-Save this as `build-deb.sh`:
-
-```bash
-#!/bin/bash
-set -e
-
-VERSION="1.0.0"
-PACKAGE_NAME="netcheck"
-BUILD_DIR="${PACKAGE_NAME}_${VERSION}"
-
-echo "Building ${PACKAGE_NAME} version ${VERSION} DEB package..."
-
-# Clean previous builds
-rm -rf "${BUILD_DIR}" "${BUILD_DIR}.deb"
-
-# Create directory structure
-mkdir -p "${BUILD_DIR}/DEBIAN"
-mkdir -p "${BUILD_DIR}/usr/local/bin"
-mkdir -p "${BUILD_DIR}/usr/share/man/man1"
-mkdir -p "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}"
-mkdir -p "${BUILD_DIR}/etc/bash_completion.d"
-
-# Copy main script
-cp check_ip.sh "${BUILD_DIR}/usr/local/bin/netcheck"
-chmod 755 "${BUILD_DIR}/usr/local/bin/netcheck"
-
-# Copy documentation
-cp README.md EXAMPLES.md INSTALL.md "${BUILD_DIR}/usr/share/doc/${PACKAGE_NAME}/"
-
-# Create man page (simplified version)
-cat << 'MANEOF' > /tmp/netcheck.1
-.TH NETCHECK 1 "November 2025" "netcheck 1.0.0" "User Commands"
-.SH NAME
-netcheck \- network connectivity checker
-.SH SYNOPSIS
-.B netcheck
-[\fIOPTIONS\fR] [\fIFILE\fR]
-.SH DESCRIPTION
-A powerful network connectivity testing tool with parallel processing, IP ranges, port ranges, and multiple output formats.
-.SH OPTIONS
-.TP
-.BR \-t ", " \-\-timeout " " \fISECONDS\fR
-Connection timeout (default: 5)
-.TP
-.BR \-j ", " \-\-jobs " " \fINUMBER\fR
-Parallel jobs (default: 10)
-.TP
-.BR \-f ", " \-\-format " " \fIFORMAT\fR
-Output format: text, json, csv, xml (default: text)
-.TP
-.BR \-q ", " \-\-quick " " \fIHOST\fR " " \fIPORT\fR
-Quick test mode
-.TP
-.BR \-\-csv " " \fIFILE\fR
-Read hosts from CSV file
-.SH EXAMPLES
-netcheck -q google.com 443
-.br
-netcheck --csv hosts.csv -j 50
-.SH AUTHOR
-Written by Your Name.
-MANEOF
-gzip -9c /tmp/netcheck.1 > "${BUILD_DIR}/usr/share/man/man1/netcheck.1.gz"
-rm /tmp/netcheck.1
-
-# Create bash completion
-cat << 'COMPEOF' > "${BUILD_DIR}/etc/bash_completion.d/netcheck"
-_netcheck() {
-    local cur prev opts
-    COMPREPLY=()
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="-t -j -v -f -c -q --timeout --jobs --verbose --format --combined --quick --csv --help --version"
-    
-    case "${prev}" in
-        -f|--format)
-            COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) )
-            return 0
-            ;;
-        *)
-            ;;
-    esac
-    
-    COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
-    return 0
-}
-complete -F _netcheck netcheck
-COMPEOF
-
-# Create control file
-cat << CTRLEOF > "${BUILD_DIR}/DEBIAN/control"
-Package: netcheck
-Version: ${VERSION}
-Section: utils
-Priority: optional
-Architecture: all
-Depends: bash (>= 4.0), telnet | netcat-openbsd | netcat-traditional
-Maintainer: Your Name <your.email@example.com>
-Description: Network connectivity checker with advanced features
- A powerful bash-based network connectivity testing tool that supports:
-  - Parallel connection testing
-  - IP range and CIDR notation
-  - Port ranges and multiple ports
-  - CSV file input
-  - Multiple output formats (text, JSON, CSV, XML)
-  - Quick test mode
-  - Progress tracking
-CTRLEOF
-
-# Create postinst script
-cat << 'POSTEOF' > "${BUILD_DIR}/DEBIAN/postinst"
-#!/bin/bash
-set -e
-if command -v mandb > /dev/null 2>&1; then
-    mandb -q 2>/dev/null || true
-fi
-echo "netcheck installed successfully! Run 'netcheck --help' to get started."
-exit 0
-POSTEOF
-chmod 755 "${BUILD_DIR}/DEBIAN/postinst"
-
-# Build package
-dpkg-deb --build "${BUILD_DIR}"
-
-echo ""
-echo "✅ Package created: ${BUILD_DIR}.deb"
-echo ""
-echo "To install:"
-echo "  sudo dpkg -i ${BUILD_DIR}.deb"
-echo ""
-echo "To test:"
-echo "  dpkg-deb --info ${BUILD_DIR}.deb"
-echo "  dpkg-deb --contents ${BUILD_DIR}.deb"
-echo ""
-```
-
-Make it executable and run:
-```bash
-chmod +x build-deb.sh
-./build-deb.sh
-```
-
-## Summary
-
-Creating a DEB package:
-1. ✅ Create proper directory structure
-2. ✅ Write DEBIAN/control metadata
-3. ✅ Add post-install/pre-remove scripts
-4. ✅ Build with `dpkg-deb --build`
-5. ✅ Test locally with `sudo dpkg -i`
-6. ✅ Publish to PPA or custom repository
-
-Next: See SNAP_GUIDE.md for Snap package creation!
+### 2. Custom APT Repository
+You can host the `.deb` file inside a static web server:
+1. Copy the package to your pool: `cp dist/deb/*.deb apt-repo/pool/main/`
+2. Re-index pool metadata: `dpkg-scanpackages pool/main /dev/null | gzip -9c > dists/stable/main/binary-amd64/Packages.gz`
+3. Generate signed Release files.
+4. Users add your repository to their `/etc/apt/sources.list.d/`.

@@ -1,0 +1,104 @@
+_netcheck() {
+    local cur prev opts subcmds
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    # All available subcommands
+    subcmds="tcp dns http ssl ping interfaces ports traceroute scan whois"
+    # Global/legacy flags
+    opts="-t --timeout -j --jobs -f --format -c --combined -q --quick -d --dns -p --ping -s --status --cert -ip --my-ip --mcp --csv --retry --retry-delay -h --help -v --version -V --verbose --no-color"
+
+    # Subcommand-specific flags
+    tcp_opts="--timeout -t --jobs -j --format -f --retry --retry-delay --verbose -V --watch -w --interval -i --no-color --output -o"
+    dns_opts="--timeout -t --format -f --retry --retry-delay --verbose -V --watch -w --interval -i --no-color"
+    http_opts="--timeout -t --format -f --retry --retry-delay --verbose -V --watch -w --interval -i --no-color --method -X --header -H --auth"
+    ssl_opts="--timeout -t --format -f --retry --retry-delay --verbose -V --watch -w --interval -i --no-color"
+    ping_opts="--timeout -t --format -f --retry --retry-delay --verbose -V --watch -w --interval -i --no-color --count -c"
+    interfaces_opts="--all --format -f --verbose -V --no-color --watch -w --interval -i"
+    ports_opts="--format -f --verbose -V --no-color --watch -w --interval -i"
+    traceroute_opts="--timeout -t --format -f --max-hops -m --verbose -V --watch -w --interval -i --no-color"
+    scan_opts="--timeout -t --format -f --ports -p --jobs -j --verbose -V --watch -w --interval -i --no-color"
+    whois_opts="--format -f --verbose -V --no-color"
+
+    # If we're completing the first positional (subcommand or flag)
+    if [[ ${COMP_CWORD} -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "${subcmds} ${opts}" -- ${cur}) )
+        return 0
+    fi
+
+    # Detect which subcommand we're inside
+    local subcommand=""
+    for word in "${COMP_WORDS[@]}"; do
+        case "$word" in
+            tcp|dns|http|ssl|ping|interfaces|ports|traceroute|scan|whois)
+                subcommand="$word"
+                break
+                ;;
+        esac
+    done
+
+    # Subcommand-specific completions
+    case "${subcommand}" in
+        tcp)
+            case "${prev}" in
+                -f|--format) COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) ); return 0 ;;
+            esac
+            COMPREPLY=( $(compgen -W "${tcp_opts}" -- ${cur}) ); return 0 ;;
+        dns)
+            case "${prev}" in
+                -f|--format) COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) ); return 0 ;;
+            esac
+            COMPREPLY=( $(compgen -W "${dns_opts}" -- ${cur}) ); return 0 ;;
+        http)
+            case "${prev}" in
+                -f|--format) COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) ); return 0 ;;
+                -X|--method) COMPREPLY=( $(compgen -W "GET HEAD POST PUT DELETE PATCH" -- ${cur}) ); return 0 ;;
+            esac
+            COMPREPLY=( $(compgen -W "${http_opts}" -- ${cur}) ); return 0 ;;
+        ssl)
+            case "${prev}" in
+                -f|--format) COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) ); return 0 ;;
+            esac
+            COMPREPLY=( $(compgen -W "${ssl_opts}" -- ${cur}) ); return 0 ;;
+        ping)
+            case "${prev}" in
+                -f|--format) COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) ); return 0 ;;
+            esac
+            COMPREPLY=( $(compgen -W "${ping_opts}" -- ${cur}) ); return 0 ;;
+        interfaces)
+            COMPREPLY=( $(compgen -W "${interfaces_opts}" -- ${cur}) ); return 0 ;;
+        ports)
+            case "${prev}" in
+                -f|--format) COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) ); return 0 ;;
+            esac
+            COMPREPLY=( $(compgen -W "${ports_opts}" -- ${cur}) ); return 0 ;;
+        traceroute)
+            case "${prev}" in
+                -f|--format) COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) ); return 0 ;;
+            esac
+            COMPREPLY=( $(compgen -W "${traceroute_opts}" -- ${cur}) ); return 0 ;;
+        scan)
+            case "${prev}" in
+                -f|--format) COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) ); return 0 ;;
+            esac
+            COMPREPLY=( $(compgen -W "${scan_opts}" -- ${cur}) ); return 0 ;;
+        whois)
+            COMPREPLY=( $(compgen -W "${whois_opts}" -- ${cur}) ); return 0 ;;
+    esac
+
+    # Global flag completions (when no subcommand matched)
+    case "${prev}" in
+        -f|--format)
+            COMPREPLY=( $(compgen -W "text json csv xml" -- ${cur}) )
+            return 0 ;;
+    esac
+
+    if [[ ${cur} == -* ]]; then
+        COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+        return 0
+    fi
+}
+
+complete -F _netcheck netcheck
+complete -F _netcheck netcheckx

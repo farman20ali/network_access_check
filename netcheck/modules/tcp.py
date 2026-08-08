@@ -2,6 +2,7 @@ import socket
 import time
 from typing import Dict, Any
 from netcheck.modules.dns import dns_lookup
+from netcheck.utils.services import get_service_name
 
 def check_tcp_connect(host: str, port: int, timeout: float = 5.0) -> Dict[str, Any]:
     """
@@ -11,6 +12,7 @@ def check_tcp_connect(host: str, port: int, timeout: float = 5.0) -> Dict[str, A
     """
     target_str = f"{host}:{port}"
     result = {
+        "type": "tcp",
         "target": target_str,
         "status": "FAILED",
         "latency_ms": None,
@@ -20,7 +22,9 @@ def check_tcp_connect(host: str, port: int, timeout: float = 5.0) -> Dict[str, A
             "host": host,
             "port": port,
             "ip": None,
-            "resolved": False
+            "resolved": False,
+            "method": "socket",
+            "service": get_service_name(port)
         }
     }
     
@@ -43,11 +47,8 @@ def check_tcp_connect(host: str, port: int, timeout: float = 5.0) -> Dict[str, A
     # Iterate over all resolved IPs and try connecting. Succeed if at least one works.
     for ip in ips:
         try:
-            family = socket.AF_INET6 if ":" in ip else socket.AF_INET
-            sock = socket.socket(family, socket.SOCK_STREAM)
-            sock.settimeout(timeout)
-            sock.connect((ip, port))
-            sock.close()
+            with socket.create_connection((ip, port), timeout=timeout):
+                pass
             
             duration_ms = (time.perf_counter() - start_time) * 1000.0
             result["status"] = "SUCCESS"
@@ -68,3 +69,4 @@ def check_tcp_connect(host: str, port: int, timeout: float = 5.0) -> Dict[str, A
     # Store the first IP we tried as metadata reference
     result["metadata"]["ip"] = ips[0]
     return result
+

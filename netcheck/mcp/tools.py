@@ -134,6 +134,14 @@ TOOLS_LIST = [
         }
     },
     {
+        "name": "get_listening_ports",
+        "description": "Lists local active listening TCP sockets, process names, PIDs, and associated Docker container names.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
         "name": "get_public_ip",
         "description": "Queries external lookups to fetch the public internet IP address of this host.",
         "inputSchema": {
@@ -145,6 +153,73 @@ TOOLS_LIST = [
                     "default": 3.0
                 }
             }
+        }
+    },
+    {
+        "name": "traceroute",
+        "description": "Traces the network path (hops) from this host to the destination. Uses raw sockets if available, otherwise falls back to the system traceroute/tracepath/tracert binary.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "Target hostname or IP address."
+                },
+                "max_hops": {
+                    "type": "integer",
+                    "description": "Maximum number of hops to trace (default: 30).",
+                    "default": 30
+                },
+                "timeout": {
+                    "type": "number",
+                    "description": "Per-hop timeout in seconds (default: 2.0).",
+                    "default": 2.0
+                }
+            },
+            "required": ["host"]
+        }
+    },
+    {
+        "name": "scan_ports",
+        "description": "Performs a concurrent TCP port scan on a target host. Returns a list of open and closed ports with service names and latency.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "Target hostname or IP address."
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Optional list of port numbers to scan. Defaults to common well-known ports."
+                },
+                "timeout": {
+                    "type": "number",
+                    "description": "Per-port timeout in seconds (default: 1.5).",
+                    "default": 1.5
+                },
+                "max_workers": {
+                    "type": "integer",
+                    "description": "Maximum concurrent scan threads (default: 20).",
+                    "default": 20
+                }
+            },
+            "required": ["host"]
+        }
+    },
+    {
+        "name": "whois_lookup",
+        "description": "Looks up registrar and registration details for a domain or IP address using RDAP (with WHOIS fallback). Returns registrar name, creation date, and registration type.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Domain name or IP address to look up (e.g. google.com or 8.8.8.8)."
+                }
+            },
+            "required": ["target"]
         }
     }
 ]
@@ -203,10 +278,38 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
             res = get_network_interfaces()
             return _mcp_success_response(res)
             
+        elif name == "get_listening_ports":
+            from netcheck.modules.interfaces import check_listening_ports
+            res = check_listening_ports()
+            return _mcp_success_response(res)
+            
         elif name == "get_public_ip":
             timeout = float(arguments.get("timeout", 3.0))
             ip = get_public_ip(timeout)
             return _mcp_success_response({"public_ip": ip, "success": ip != "Unknown"})
+            
+        elif name == "traceroute":
+            from netcheck.modules.traceroute import traceroute as run_traceroute
+            host = arguments.get("host")
+            max_hops = int(arguments.get("max_hops", 30))
+            timeout = float(arguments.get("timeout", 2.0))
+            res = run_traceroute(host, max_hops=max_hops, timeout=timeout)
+            return _mcp_success_response(res)
+            
+        elif name == "scan_ports":
+            from netcheck.modules.port_scanner import scan_ports
+            host = arguments.get("host")
+            ports = arguments.get("ports", None)
+            timeout = float(arguments.get("timeout", 1.5))
+            max_workers = int(arguments.get("max_workers", 20))
+            res = scan_ports(host, ports=ports, timeout=timeout, max_workers=max_workers)
+            return _mcp_success_response(res)
+            
+        elif name == "whois_lookup":
+            from netcheck.modules.whois import lookup_registration
+            target = arguments.get("target")
+            res = lookup_registration(target)
+            return _mcp_success_response(res)
             
         else:
             return _mcp_error_response(f"Unknown tool: {name}")

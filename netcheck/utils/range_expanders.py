@@ -13,7 +13,11 @@ def expand_ip_range(ip_str: str) -> List[str]:
     if "/" in ip_str:
         try:
             network = ipaddress.ip_network(ip_str, strict=False)
-            return [str(ip) for ip in network.hosts()]
+            hosts = [str(ip) for ip in network.hosts()]
+            if len(hosts) > 256:
+                import sys
+                print(f"⚠️  Warning: CIDR {ip_str} generates {len(hosts)} hosts - this may take a while", file=sys.stderr)
+            return hosts
         except Exception:
             return [ip_str]
             
@@ -39,6 +43,9 @@ def expand_ip_range(ip_str: str) -> List[str]:
             while curr <= end:
                 ips.append(str(curr))
                 curr += 1
+            if len(ips) > 256:
+                import sys
+                print(f"⚠️  Warning: IP range {ip_str} generates {len(ips)} hosts - this may take a while", file=sys.stderr)
             return ips
         except Exception:
             return [ip_str]

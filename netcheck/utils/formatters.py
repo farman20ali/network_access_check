@@ -39,20 +39,54 @@ def get_colors(use_color: bool) -> Dict[str, str]:
         "reset": ""
     }
 
+def _detect_result_type(res: Dict[str, Any]) -> str:
+    """Detects the check type of a result based on type field or metadata clues."""
+    t = res.get("type")
+    if t:
+        return t
+        
+    meta = res.get("metadata", {})
+    target = res.get("target")
+    
+    if target == "interfaces" or "interfaces" in meta:
+        return "interfaces"
+    if "resolved_host" in meta:
+        return "dns"
+    if "status_code" in meta and not "valid_until" in meta:
+        return "http"
+    if "valid_until" in meta:
+        return "ssl"
+    if "packets_sent" in meta:
+        return "ping"
+    if target == "ports" or "listening_ports" in meta:
+        return "ports"
+    if "open_ports" in meta:
+        return "scan"
+    if "hops" in meta:
+        return "traceroute"
+    if "rdap_source" in meta:
+        return "whois"
+    if "port" in meta and not "valid_until" in meta and not "status_code" in meta:
+        return "tcp"
+        
+    return "tcp"
+
 def format_json(results: List[Dict[str, Any]]) -> str:
     """Format results to structured JSON matching legacy or specialized formats."""
     if results and len(results) == 1:
         res = results[0]
         meta = res.get("metadata", {})
+        res_type = _detect_result_type(res)
+        
         # 1. Interfaces
-        if res.get("target") == "interfaces":
+        if res_type == "interfaces":
             return json.dumps({
                 "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "type": "interfaces",
                 **meta
             }, indent=2)
         # 2. DNS
-        elif "resolved_host" in meta:
+        elif res_type == "dns":
             return json.dumps({
                 "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "type": "dns",
@@ -63,7 +97,7 @@ def format_json(results: List[Dict[str, Any]]) -> str:
                 **meta
             }, indent=2)
         # 3. HTTP
-        elif "status_code" in meta and "headers" in meta:
+        elif res_type == "http":
             return json.dumps({
                 "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "type": "http",
@@ -74,7 +108,7 @@ def format_json(results: List[Dict[str, Any]]) -> str:
                 **meta
             }, indent=2)
         # 4. SSL
-        elif "valid_until" in meta:
+        elif res_type == "ssl":
             return json.dumps({
                 "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "type": "ssl",
@@ -85,7 +119,7 @@ def format_json(results: List[Dict[str, Any]]) -> str:
                 **meta
             }, indent=2)
         # 5. Ping
-        elif "packets_sent" in meta:
+        elif res_type == "ping":
             return json.dumps({
                 "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "type": "ping",
@@ -95,6 +129,75 @@ def format_json(results: List[Dict[str, Any]]) -> str:
                 "latency_ms": res.get("latency_ms"),
                 **meta
             }, indent=2)
+        # 6. Local Listening Ports
+        elif res_type == "ports":
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "ports",
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "listening_ports": meta.get("listening_ports", [])
+            }, indent=2)
+        # 7. Port Scanner
+        elif res_type == "scan":
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "scan",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "ips": meta.get("ips", []),
+                "open_ports": meta.get("open_ports", []),
+                "closed_ports": meta.get("closed_ports", [])
+            }, indent=2)
+        # 8. Traceroute
+        elif res_type == "traceroute":
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "traceroute",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "hops": meta.get("hops", [])
+            }, indent=2)
+        # 9. WHOIS / RDAP
+        elif res_type == "whois":
+            return json.dumps({
+                "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "check_type": "whois",
+                "target": res.get("target"),
+                "success": res.get("success", False),
+                "error": res.get("error"),
+                "rdap_type": meta.get("type", ""),
+                "rdap_source": meta.get("rdap_source", ""),
+                "registrar": meta.get("registrar", ""),
+                "creation_date": meta.get("creation_date", "")
+            }, indent=2)
+
+
+    # Multi-result ping batch (e.g. from -p 192.168.1.1-12)
+    if results and all(_detect_result_type(r) == "ping" for r in results):
+        ping_results = []
+        for r in results:
+            meta = r.get("metadata", {})
+            ping_results.append({
+                "target": r.get("target"),
+                "success": r.get("success", False),
+                "error": r.get("error"),
+                "latency_ms": r.get("latency_ms"),
+                "packets_sent": meta.get("packets_sent"),
+                "packets_received": meta.get("packets_received"),
+                "packet_loss_pct": meta.get("packet_loss_pct"),
+                "min_rtt_ms": meta.get("min_rtt_ms"),
+                "avg_rtt_ms": meta.get("avg_rtt_ms"),
+                "max_rtt_ms": meta.get("max_rtt_ms"),
+            })
+        return json.dumps({
+            "check_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "type": "ping",
+            "count": len(ping_results),
+            "results": ping_results
+        }, indent=2)
 
     # Default legacy TCP connect check format
     all_success = all(r.get("success", False) for r in results) if results else True
@@ -109,7 +212,7 @@ def format_json(results: List[Dict[str, Any]]) -> str:
             port = 0
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if r.get("success", False):
-            method = r.get("metadata", {}).get("method", "netcat")
+            method = r.get("metadata", {}).get("method", "socket")
             formatted_results.append({
                 "status": "success",
                 "host": host,
@@ -149,8 +252,10 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
     if results and len(results) == 1:
         res = results[0]
         meta = res.get("metadata", {})
+        res_type = _detect_result_type(res)
+        
         # 1. Interfaces
-        if res.get("target") == "interfaces":
+        if res_type == "interfaces":
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["Interface", "IPv4", "IPv6", "Status", "Default_Gateway", "Public_IP"])
@@ -168,7 +273,7 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
                 ])
             return output.getvalue()
         # 2. DNS
-        elif "resolved_host" in meta:
+        elif res_type == "dns":
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["Target", "Resolved_Host", "IP", "Reverse_DNS", "Success", "Latency_MS", "Error"])
@@ -184,7 +289,7 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
                 writer.writerow([res.get("target"), meta.get("resolved_host"), "", rev, success, lat, err])
             return output.getvalue()
         # 3. HTTP
-        elif "status_code" in meta and "headers" in meta:
+        elif res_type == "http":
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["Target", "Status_Code", "Redirect_URL", "Size_Bytes", "Success", "Latency_MS", "Error"])
@@ -199,7 +304,7 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
             ])
             return output.getvalue()
         # 4. SSL
-        elif "valid_until" in meta:
+        elif res_type == "ssl":
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["Target", "Subject_CN", "Issuer_O", "Valid_From", "Valid_Until", "Days_Until_Expiry", "Expired", "Success", "Latency_MS", "Error"])
@@ -217,7 +322,7 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
             ])
             return output.getvalue()
         # 5. Ping
-        elif "packets_sent" in meta:
+        elif res_type == "ping":
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["Target", "Host", "Packets_Sent", "Packets_Received", "Packet_Loss_Pct", "Min_RTT_MS", "Avg_RTT_MS", "Max_RTT_MS", "Success", "Latency_MS", "Error"])
@@ -235,6 +340,72 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
                 res.get("error") or ""
             ])
             return output.getvalue()
+        # 6. Local Listening Ports
+        elif res_type == "ports":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Proto", "Address", "Port", "Process", "PID"])
+            for p in meta.get("listening_ports", []):
+                writer.writerow([
+                    p.get("proto", "TCP"),
+                    p.get("address", "*"),
+                    p.get("port", ""),
+                    p.get("process", ""),
+                    p.get("pid", "")
+                ])
+            return output.getvalue()
+        # 7. Port Scanner
+        elif res_type == "scan":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Port", "Status", "Service", "Latency_MS"])
+            for p in meta.get("open_ports", []):
+                writer.writerow([
+                    res.get("target"),
+                    p.get("port", ""),
+                    "OPEN",
+                    p.get("service", ""),
+                    p.get("latency_ms") if p.get("latency_ms") is not None else "N/A"
+                ])
+            for p in meta.get("closed_ports", []):
+                writer.writerow([
+                    res.get("target"),
+                    p.get("port", ""),
+                    "CLOSED",
+                    p.get("service", ""),
+                    "N/A"
+                ])
+            return output.getvalue()
+        # 8. Traceroute
+        elif res_type == "traceroute":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Hop", "IP", "Hostname", "Latency_MS"])
+            for h in meta.get("hops", []):
+                writer.writerow([
+                    res.get("target"),
+                    h.get("hop", ""),
+                    h.get("ip", "*"),
+                    h.get("name", "*"),
+                    h.get("latency_ms") if h.get("latency_ms") is not None else "*"
+                ])
+            return output.getvalue()
+        # 9. WHOIS / RDAP
+        elif res_type == "whois":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Target", "Type", "Source", "Registrar", "Creation_Date", "Success", "Error"])
+            writer.writerow([
+                res.get("target"),
+                meta.get("type", ""),
+                meta.get("rdap_source", ""),
+                meta.get("registrar", ""),
+                meta.get("creation_date", ""),
+                "SUCCESS" if res.get("success", False) else "FAILED",
+                res.get("error") or ""
+            ])
+            return output.getvalue()
+
 
     # Default legacy TCP connect check format
     output = io.StringIO()
@@ -248,7 +419,7 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
         for r in results:
             host = r.get("metadata", {}).get("host", r.get("target", "").split(":")[0])
             port = r.get("metadata", {}).get("port", r.get("target", "").split(":")[-1])
-            method = r.get("metadata", {}).get("method", "netcat")
+            method = r.get("metadata", {}).get("method", "socket")
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             writer.writerow(["SUCCESS", host, port, method, timestamp])
     elif all_fail and results:
@@ -265,7 +436,7 @@ def format_csv(results: List[Dict[str, Any]]) -> str:
             host = r.get("metadata", {}).get("host", r.get("target", "").split(":")[0])
             port = r.get("metadata", {}).get("port", r.get("target", "").split(":")[-1])
             status = "SUCCESS" if r.get("success", False) else "FAILED"
-            method_reason = r.get("metadata", {}).get("method", "netcat") if r.get("success", False) else (r.get("error", "timeout") or "timeout")
+            method_reason = r.get("metadata", {}).get("method", "socket") if r.get("success", False) else (r.get("error", "timeout") or "timeout")
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             writer.writerow([status, host, port, method_reason, timestamp])
     return output.getvalue()
@@ -275,8 +446,10 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
     if results and len(results) == 1:
         res = results[0]
         meta = res.get("metadata", {})
+        res_type = _detect_result_type(res)
+        
         # 1. Interfaces
-        if res.get("target") == "interfaces":
+        if res_type == "interfaces":
             root = ET.Element("network_interfaces", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             ET.SubElement(root, "primary_ip").text = meta.get("primary_ip", "")
             ET.SubElement(root, "gateway_ip").text = meta.get("gateway_ip", "")
@@ -295,7 +468,7 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
             xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
             return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
         # 2. DNS
-        elif "resolved_host" in meta:
+        elif res_type == "dns":
             root = ET.Element("dns_lookup", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), target=res.get("target"), success=str(res.get("success", False)).lower())
             ET.SubElement(root, "resolved_host").text = meta.get("resolved_host", "")
             ips_elem = ET.SubElement(root, "ip_addresses")
@@ -312,7 +485,7 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
             xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
             return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
         # 3. HTTP
-        elif "status_code" in meta and "headers" in meta:
+        elif res_type == "http":
             root = ET.Element("http_check", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), target=res.get("target"), success=str(res.get("success", False)).lower())
             ET.SubElement(root, "status_code").text = str(meta.get("status_code") if meta.get("status_code") is not None else "")
             ET.SubElement(root, "redirect_url").text = meta.get("redirect_url") or ""
@@ -328,7 +501,7 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
             xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
             return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
         # 4. SSL
-        elif "valid_until" in meta:
+        elif res_type == "ssl":
             root = ET.Element("ssl_check", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), target=res.get("target"), success=str(res.get("success", False)).lower())
             ET.SubElement(root, "subject_cn").text = meta.get("subject", {}).get("commonName", "")
             ET.SubElement(root, "issuer_o").text = meta.get("issuer", {}).get("organizationName", "")
@@ -347,7 +520,7 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
             xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
             return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
         # 5. Ping
-        elif "packets_sent" in meta:
+        elif res_type == "ping":
             root = ET.Element("ping_check", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), target=res.get("target"), success=str(res.get("success", False)).lower())
             ET.SubElement(root, "host").text = meta.get("host", "")
             ET.SubElement(root, "packets_sent").text = str(meta.get("packets_sent", 0))
@@ -362,6 +535,62 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
                 ET.SubElement(root, "error").text = res.get("error")
             xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
             return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 6. Local Listening Ports
+        elif res_type == "ports":
+            root = ET.Element("listening_ports", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                              success=str(res.get("success", False)).lower())
+            for p in meta.get("listening_ports", []):
+                ET.SubElement(root, "port",
+                              proto=str(p.get("proto", "TCP")),
+                              address=str(p.get("address", "*")),
+                              port=str(p.get("port", "")),
+                              process=str(p.get("process", "")),
+                              pid=str(p.get("pid", "")))
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 7. Port Scanner
+        elif res_type == "scan":
+            root = ET.Element("port_scan", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                              target=str(res.get("target", "")),
+                              success=str(res.get("success", False)).lower())
+            ips_elem = ET.SubElement(root, "resolved_ips")
+            for ip in meta.get("ips", []):
+                ET.SubElement(ips_elem, "ip").text = ip
+            open_elem = ET.SubElement(root, "open_ports")
+            for p in meta.get("open_ports", []):
+                ET.SubElement(open_elem, "port",
+                              number=str(p.get("port", "")),
+                              service=str(p.get("service", "")),
+                              latency_ms=str(p.get("latency_ms", "")))
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 8. Traceroute
+        elif res_type == "traceroute":
+            root = ET.Element("traceroute", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                              target=str(res.get("target", "")),
+                              success=str(res.get("success", False)).lower())
+            for h in meta.get("hops", []):
+                ET.SubElement(root, "hop",
+                              number=str(h.get("hop", "")),
+                              ip=str(h.get("ip", "*")),
+                              name=str(h.get("name", "*")),
+                              latency_ms=str(h.get("latency_ms", "")))
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        # 9. WHOIS / RDAP
+        elif res_type == "whois":
+            root = ET.Element("whois_lookup", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                              target=str(res.get("target", "")),
+                              success=str(res.get("success", False)).lower())
+            ET.SubElement(root, "type").text = meta.get("type", "")
+            ET.SubElement(root, "rdap_source").text = meta.get("rdap_source", "")
+            ET.SubElement(root, "registrar").text = meta.get("registrar", "") or ""
+            ET.SubElement(root, "creation_date").text = meta.get("creation_date", "") or ""
+            if res.get("error"):
+                ET.SubElement(root, "error").text = res.get("error")
+            xml_str = ET.tostring(root, encoding="utf-8").decode("utf-8")
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+
 
     # Default legacy TCP connect check format
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -383,7 +612,7 @@ def format_xml(results: List[Dict[str, Any]]) -> str:
         r_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         if r.get("success", False):
-            method = r.get("metadata", {}).get("method", "netcat")
+            method = r.get("metadata", {}).get("method", "socket")
             ET.SubElement(container, "connection", host=host, port=port, method=method, timestamp=r_time)
         else:
             reason = r.get("error", "timeout") or "timeout"
@@ -410,9 +639,10 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
         error = r.get("error", "")
         latency = r.get("latency_ms")
         meta = r.get("metadata", {})
+        res_type = _detect_result_type(r)
         
         # 1. Network Interfaces formatter
-        if target == "interfaces" or "interfaces" in meta:
+        if res_type == "interfaces":
             lines.append("Network Interface Information")
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             lines.append("")
@@ -453,15 +683,62 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             lines.append(f"🌍 {c['bold']}Public IP Address:{c['reset']}")
             if public_ip and public_ip != "Unknown":
                 lines.append(f"  {public_ip}")
-            else:
+            elif meta.get("public_ip_checked", False):
                 lines.append("  Unable to determine (no internet or curl/wget not available)")
+            else:
+                lines.append("  Not checked (use --public to retrieve)")
             lines.append("")
+
+            import os
+            if "SNAP" in os.environ and len(interfaces) == 1 and "default" in interfaces:
+                lines.append(f"⚠️  {c['yellow']}Running inside strict snap confinement. Complete interface list could not be read.{c['reset']}")
+                lines.append("   To resolve this, please run the following command to connect the plug:")
+                lines.append(f"   {c['bold']}sudo snap connect netcheck:network-observe{c['reset']}")
+                lines.append("")
+
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 1.5. Local Listening Ports formatter
+        elif res_type == "ports":
+            lines.append("Local Listening Ports & Services")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append("")
+
+            listening_ports = meta.get("listening_ports", [])
+            if listening_ports:
+                lines.append(f"🔓 {c['bold']}Active Listening Sockets:{c['reset']}")
+                lines.append("  Proto  Local Address                  Port   Process/Service (PID)")
+                lines.append("  ──────────────────────────────────────────────────────────────────")
+                for p in sorted(listening_ports, key=lambda x: x.get("port", 0)):
+                    proto = p.get("proto", "TCP")
+                    addr = p.get("address", "*")
+                    port = p.get("port", 0)
+                    proc = p.get("process", "Unknown")
+                    pid = p.get("pid", "")
+                    
+                    pid_str = f" ({pid})" if pid else ""
+                    proc_details = f"{proc}{pid_str}"
+                    
+                    lines.append(f"  {proto:<5}  {pad_right(addr, 30)} {port:<6} {proc_details}")
+                lines.append("")
+            else:
+                lines.append("No active listening ports found or failed to retrieve.")
+                lines.append("")
+                import os
+                if "SNAP" in os.environ:
+                    lines.append(f"⚠️  {c['yellow']}Running inside strict snap confinement.{c['reset']}")
+                    lines.append("   To query local listening ports, you must connect the plugs:")
+                    lines.append(f"   {c['bold']}sudo snap connect netcheck:network-observe{c['reset']}")
+                    lines.append(f"   {c['bold']}sudo snap connect netcheck:system-observe{c['reset']}")
+                    lines.append("")
+
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             return "\n".join(lines)
             
         # 2. DNS Lookup formatter
-        elif "resolved_host" in meta:
-            lines.append(f"DNS Lookup for: {meta.get('resolved_host')}")
+        elif res_type == "dns":
+            lines.append(f"DNS Lookup for: {target}")
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             lines.append(f"Hostname: {meta.get('resolved_host')}")
             lines.append("")
@@ -490,18 +767,20 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             return "\n".join(lines)
             
         # 3. HTTP Status check formatter
-        elif "status_code" in meta and not "valid_until" in meta:
+        elif res_type == "http":
             lines.append(f"HTTP Status Check for: {target}")
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             lines.append("Sending HTTP request...")
             lines.append("")
             
             status_code = meta.get("status_code")
-            size = meta.get("size_bytes", 0)
+            size = meta.get("size_bytes")
             redirect_url = meta.get("redirect_url")
             headers = meta.get("headers", {})
             
-            if size > 1048576:
+            if size is None:
+                size_human = "Unknown"
+            elif size > 1048576:
                 size_human = f"{size / 1048576:.2f} MB"
             elif size > 1024:
                 size_human = f"{size / 1024:.2f} KB"
@@ -525,15 +804,22 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             else:
                 status_icon = f"{c['red']}❌ FAILED{c['reset']}"
                 
+            url_to_show = target
+            if len(url_to_show) > 38:
+                url_to_show = url_to_show[:35] + "..."
+                
             lines.append("┌─────────────────────────────────────────────┐")
-            lines.append(f"│ URL: {pad_right(target, 38)} │")
+            lines.append(f"│ URL: {pad_right(url_to_show, 38)} │")
             lines.append("├─────────────────────────────────────────────┤")
             lines.append(f"│ Status: {pad_right(status_icon, 35)} │")
             lines.append(f"│ Code: {pad_right(f'{status_code} {code_desc}', 37)} │")
             lines.append(f"│ Response Time: {pad_right(f'{latency}ms' if latency is not None else 'N/A', 28)} │")
             lines.append(f"│ Content Size: {pad_right(size_human, 29)} │")
             if redirect_url:
-                lines.append(f"│ Redirected To: {pad_right(redirect_url, 27)} │")
+                redir_to_show = redirect_url
+                if len(redir_to_show) > 27:
+                    redir_to_show = redir_to_show[:24] + "..."
+                lines.append(f"│ Redirected To: {pad_right(redir_to_show, 27)} │")
             lines.append("└─────────────────────────────────────────────┘")
             lines.append("")
             
@@ -549,7 +835,7 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             return "\n".join(lines)
             
         # 4. SSL Certificate check formatter
-        elif "valid_until" in meta:
+        elif res_type == "ssl":
             lines.append(f"SSL/TLS Certificate Check for: {target}")
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             lines.append(f"Connecting to {target}...")
@@ -576,10 +862,18 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
                 status_icon = f"{c['green']}✅ VALID{c['reset']}"
                 
             subject_cn = subject.get("commonName", "")
+            if len(subject_cn) > 29:
+                subject_cn = subject_cn[:26] + "..."
             issuer_o = issuer.get("organizationName", "")
+            if len(issuer_o) > 31:
+                issuer_o = issuer_o[:28] + "..."
+                
+            host_to_show = target
+            if len(host_to_show) > 37:
+                host_to_show = host_to_show[:34] + "..."
             
             lines.append("┌─────────────────────────────────────────────┐")
-            lines.append(f"│ Host: {pad_right(target, 37)} │")
+            lines.append(f"│ Host: {pad_right(host_to_show, 37)} │")
             lines.append("├─────────────────────────────────────────────┤")
             lines.append(f"│ Status: {pad_right(status_icon, 35)} │")
             if verification_error:
@@ -596,6 +890,20 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             lines.append(f"│ Valid From: {pad_right(valid_from if valid_from else 'N/A', 31)} │")
             lines.append(f"│ Valid Until: {pad_right(valid_until if valid_until else 'N/A', 30)} │")
             lines.append(f"│ Days Until Expiry: {pad_right(str(days_until_expiry) if days_until_expiry is not None else 'N/A', 24)} │")
+            cipher = meta.get("cipher")
+            tls_version = meta.get("tls_version")
+            fingerprint = meta.get("fingerprint")
+            if tls_version or cipher or fingerprint:
+                lines.append("├─────────────────────────────────────────────┤")
+                lines.append("│ Connection Security Details:                 │")
+                lines.append("├─────────────────────────────────────────────┤")
+                if tls_version:
+                    lines.append(f"│ TLS Version: {pad_right(tls_version, 30)} │")
+                if cipher:
+                    lines.append(f"│ Cipher Suite: {pad_right(cipher, 29)} │")
+                if fingerprint:
+                    fp_short = f"{fingerprint[:16]}...{fingerprint[-16:]}"
+                    lines.append(f"│ SHA-256 FP: {pad_right(fp_short, 31)} │")
             lines.append("└─────────────────────────────────────────────┘")
             lines.append("")
             
@@ -610,12 +918,13 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             return "\n".join(lines)
             
         # 5. ICMP Ping formatter
-        elif "packets_sent" in meta:
+        elif res_type == "ping":
             lines.append(f"ICMP Ping Test for: {target}")
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             lines.append(f"Target: {meta.get('host', target)}")
             lines.append("")
-            lines.append("Sending 4 ICMP packets...")
+            packets_sent = meta.get("packets_sent", 4)
+            lines.append(f"Sending {packets_sent} ICMP packets...")
             lines.append("")
             
             ping_output = meta.get("ping_output", "")
@@ -632,14 +941,112 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             return "\n".join(lines)
             
-        # 6. Fallback default single-target box
+        # 6. TCP Connection Check Formatter
+        elif res_type == "tcp":
+            lines.append(f"TCP Connection Test for: {target}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"Connecting to {target}...")
+            lines.append("")
+            
+            status_icon = f"{c['green']}✅ SUCCESS{c['reset']}" if success else f"{c['red']}❌ FAILED{c['reset']}"
+            service_name = meta.get("service", "")
+            ip_addr = meta.get("ip") or "Unknown"
+            
+            host_to_show = target
+            if len(host_to_show) > 37:
+                host_to_show = host_to_show[:34] + "..."
+            
+            lines.append("┌─────────────────────────────────────────────┐")
+            lines.append(f"│ Host: {pad_right(host_to_show, 37)} │")
+            lines.append(f"│ Port: {pad_right(str(meta.get('port', '')), 37)} │")
+            if service_name:
+                lines.append(f"│ Service: {pad_right(service_name, 34)} │")
+            lines.append("├─────────────────────────────────────────────┤")
+            lines.append(f"│ Status: {pad_right(status_icon, 35)} │")
+            lines.append(f"│ IP Address: {pad_right(ip_addr, 31)} │")
+            lines.append(f"│ Latency: {pad_right(f'{latency}ms' if latency is not None else 'N/A', 34)} │")
+            if error:
+                err_str = str(error)
+                if len(err_str) > 35:
+                    err_str = err_str[:32] + "..."
+                lines.append(f"│ Reason: {pad_right(err_str, 35)} │")
+            lines.append("└─────────────────────────────────────────────┘")
+            lines.append("")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 7. Traceroute Formatter
+        elif res_type == "traceroute":
+            lines.append(f"Traceroute to: {target}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"{'Hop':3} {'IP Address':15} {'Hostname/Details':30} {'Latency'}")
+            lines.append("────────────────────────────────────────")
+            for h in meta.get("hops", []):
+                hop_num = h.get("hop")
+                ip = h.get("ip", "*")
+                name = h.get("name", "*")
+                latency_ms = f"{h.get('latency_ms')} ms" if h.get('latency_ms') is not None else "*"
+                
+                name_str = name
+                if name_str == ip:
+                    name_str = ""
+                lines.append(f"{hop_num:<3} {pad_right(ip, 15)} {pad_right(name_str, 30)} {latency_ms}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 8. Port Scanner Formatter
+        elif res_type == "scan":
+            lines.append(f"Port Scan for: {target}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"Scan complete. Resolved IPs: {', '.join(meta.get('ips', []))}")
+            lines.append("")
+            lines.append(f"📡 {c['bold']}Open Ports:{c['reset']}")
+            lines.append("────────────────────────────────────────")
+            open_ports = meta.get("open_ports", [])
+            if not open_ports:
+                lines.append("  No open ports found.")
+            else:
+                for p in open_ports:
+                    service = p.get("service")
+                    service_str = f"({service})" if service else ""
+                    latency_ms = f"{p.get('latency_ms')} ms" if p.get('latency_ms') is not None else ""
+                    lines.append(f"  Port {p.get('port'):<5} - OPEN {service_str:<15} {latency_ms}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 9. Whois/RDAP Formatter
+        elif res_type == "whois":
+            lines.append(f"Registration/WHOIS Lookup for: {target}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"Type: {meta.get('type', 'UNKNOWN')}")
+            lines.append(f"Source: {meta.get('rdap_source', 'N/A')}")
+            if meta.get("registrar"):
+                lines.append(f"Registrar/Owner: {meta.get('registrar')}")
+            if meta.get("creation_date"):
+                lines.append(f"Creation Date: {meta.get('creation_date')}")
+            if meta.get("raw_whois"):
+                lines.append("")
+                lines.append("Raw WHOIS Data (Snippet):")
+                lines.append("────────────────────────────────────────")
+                snippet = "\n".join(meta.get("raw_whois", "").splitlines()[:20])
+                lines.append(snippet)
+                if len(meta.get("raw_whois", "").splitlines()) > 20:
+                    lines.append("...")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return "\n".join(lines)
+
+        # 10. Fallback default single-target box
         else:
             status_icon = f"{c['green']}✅ SUCCESS{c['reset']}" if success else f"{c['red']}❌ FAILED{c['reset']}"
             if status == "REDIRECT":
                 status_icon = f"{c['yellow']}↪ REDIRECT{c['reset']}"
                 
+            target_to_show = target
+            if len(target_to_show) > 35:
+                target_to_show = target_to_show[:32] + "..."
+                
             lines.append("┌─────────────────────────────────────────────┐")
-            lines.append(f"│ Target: {pad_right(target, 35)} │")
+            lines.append(f"│ Target: {pad_right(target_to_show, 35)} │")
             lines.append("├─────────────────────────────────────────────┤")
             lines.append(f"│ Status: {pad_right(status_icon, 35)} │")
             
@@ -660,6 +1067,7 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
                 
             lines.append("└─────────────────────────────────────────────┘")
             return "\n".join(lines)
+
             
     # Bulk targets check format (tabular)
     else:
@@ -694,6 +1102,9 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
                 details = f"HTTP {meta['status_code']}" + (f" -> {meta['redirect_url']}" if meta.get("redirect_url") else "")
             elif "days_until_expiry" in meta:
                 details = f"SSL expires in {meta['days_until_expiry']} days"
+            elif "port" in meta and not "valid_until" in meta:
+                service_str = f" ({meta['service']})" if meta.get("service") else ""
+                details = f"TCP port {meta['port']}{service_str}" + (f" - IP: {meta['ip']}" if meta.get("ip") else "")
             elif "ips" in meta:
                 details = f"IPs: {', '.join(meta['ips'][:3])}"
                 
@@ -701,7 +1112,9 @@ def format_text(results: List[Dict[str, Any]], verbose: bool = False, use_color:
             
         lines.append("="*80)
         lines.append("Check Complete!")
-        lines.append(f"Total: {len(results)}  |  Successful: {successes}  |  Failed: {failures}")
+        latencies = [r["latency_ms"] for r in results if r.get("success", False) and r.get("latency_ms") is not None]
+        avg_latency = f"{sum(latencies)/len(latencies):.2f}ms" if latencies else "N/A"
+        lines.append(f"Total: {len(results)}  |  Successful: {successes}  |  Failed: {failures}  |  Avg Latency: {avg_latency}")
         lines.append("="*80)
         
     return "\n".join(lines)

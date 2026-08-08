@@ -1,560 +1,120 @@
-# Publishing as Snap Package
+# Universal Snap Packaging with `build_packages.py` (v2.3.0)
 
 ## Overview
 
-**Snap** is a universal Linux package format that works across Ubuntu, Debian, Fedora, Arch, and other distributions. Snaps are containerized, self-contained, and automatically updated.
+**Snap** is a universal Linux package format that runs securely across Ubuntu, Debian, Fedora, Arch, and other distributions. Snaps are containerised, self-contained, sandboxed, and receive automatic background updates from the Snap Store.
 
-## Benefits of Snap
+The `netcheck` build system automates Snap package creation using the `build_packages.py` builder and `publish_packages.py` publisher.
 
-- ✅ **Universal**: One package for all Linux distributions
-- ✅ **Auto-updates**: Users get updates automatically
-- ✅ **Secure**: Sandboxed with confined permissions
-- ✅ **Dependencies**: All dependencies bundled
-- ✅ **Easy Publishing**: Snap Store handles distribution
+---
 
-## Prerequisites
+## The Build Process
 
+When you run `python build_packages.py --snap`, the package orchestrator performs the following actions:
+
+1. **Prerequisite Check**: Validates that `snapcraft` is installed on your host system.
+2. **Template Expansion**:
+   - Reads the template file `packaging/snap/snapcraft.yaml`.
+   - Replaces the version placeholder `{version}` with the target synchronized package version (e.g. `2.3.0`).
+   - Writes the rendered file to a temporary building folder (`snap/snapcraft.yaml`).
+3. **Asset Migration**: Copies Snap icon assets from `packaging/snap/gui/` to the build workspace (`snap/gui/`).
+4. **Execution**: Runs `snapcraft pack --destructive-mode` to compile the snap directly on the host machine without needing container virtualization (LXD/Multipass).
+5. **Clean up**: Removes intermediate build paths (`stage/`, `prime/`, `parts/`, `snap/`) and relocates the finished `.snap` artifact to `dist/snap/`.
+
+---
+
+## Confinement & Interface Plugs
+
+`netcheck` is packaged under `strict` confinement for maximum user safety. Because raw socket access (needed for ICMP ping tests), interface sniffing (needed for network interface discovery), and socket querying (needed for listing listening ports) are restricted by standard sandboxing, `netcheck` requests specific interface plugs:
+
+```yaml
+apps:
+  netcheck:
+    command: bin/netcheck
+    plugs:
+      - network            # Allow TCP/UDP client connections
+      - network-bind       # Allow binding ports (for MCP server/port checks)
+      - network-observe    # Required for ICMP ping and network interface enumeration
+      - system-observe     # Required for local listening ports process-mapping
+      - home               # Allow reading target files from users' homes
+```
+
+### Critical Post-Installation Steps
+Because `network-observe` and `system-observe` are privileged interfaces, Snapd will not connect them automatically upon install. Users must connect them manually via:
 ```bash
-# Install snapd (if not already installed)
-sudo apt install snapd
+sudo snap connect netcheck:network-observe
+sudo snap connect netcheck:system-observe
+```
+*Note: Without these connections, TCP port checks, DNS resolution, HTTP status checks, and SSL validation will work normally, but ICMP ping and port process mapping will return permission/socket errors.*
 
-# Install snapcraft (build tool)
+---
+
+## Building the Snap
+
+### Prerequisites
+Install the Snapcraft compiler on your build system:
+```bash
 sudo snap install snapcraft --classic
-
-# Login to Snap Store (create account at https://snapcraft.io)
-snapcraft login
 ```
 
-## Directory Structure
-
-```
-netcheck/
-├── snap/
-│   └── snapcraft.yaml   # Snap configuration
-├── check_ip.sh          # Your script
-├── README.md
-└── other files...
-```
-
-## Step-by-Step Guide
-
-### 1. Create snapcraft.yaml
-
+### Run Builder
 ```bash
-# Create snap directory
-mkdir -p snap
-
-# Create snapcraft.yaml
-cat << 'EOF' > snap/snapcraft.yaml
-name: netcheck
-version: '1.2.0'
-summary: Network connectivity checker with DNS, ping, HTTP, and SSL validation
-description: |
-  A powerful bash-based network connectivity testing tool that supports:
-  
-  Core Testing Features:
-  - ICMP ping testing with statistics and URL support
-  - DNS lookup with multiple fallback methods (accepts URLs)
-  - TCP port connectivity testing with parallel processing
-  - HTTP/HTTPS status code checking with performance metrics
-  - SSL/TLS certificate validation with expiry warnings
-  
-  Network Diagnostics (v1.2.0):
-  - Show network interfaces with IP addresses (--my-ip)
-  - Retry failed connections with configurable count and delay
-  - HTTP status codes with response time and content size
-  - SSL certificate expiry check with advance warnings
-  
-  Advanced Features:
-  - Parallel connection testing (up to 256 concurrent jobs)
-  - IP range support (192.168.1.1-50)
-  - CIDR notation (10.0.0.0/24)
-  - Port ranges (8000-8100) and multiple ports (80,443,3306)
-  - CSV file input for bulk testing
-  - Multiple output formats (text, JSON, CSV, XML)
-  - Quick test mode for one-off checks
-  - Real-time progress tracking
-  - Combined reports for failed connections
-  
-  Perfect for:
-  - System administrators monitoring infrastructure
-  - DevOps engineers validating deployments
-  - Network diagnostics and troubleshooting
-  - DNS resolution verification
-  - ICMP connectivity testing
-  - HTTP/HTTPS status monitoring
-  - SSL certificate expiry tracking
-  - Security auditing and port scanning
-  - Load balancer health checks
-
-grade: stable  # or 'devel' for unstable releases
-confinement: strict  # or 'devmode' for development, 'classic' for full system access
-
-base: core22  # Ubuntu 22.04 LTS base
-
-architectures:
-  - build-on: amd64
-  - build-on: arm64
-  - build-on: armhf
-
-apps:
-  netcheck:
-    command: bin/netcheck
-    plugs:
-      - network
-      - network-bind
-      - home
-    environment:
-      LC_ALL: C.UTF-8
-
-parts:
-  netcheck:
-    plugin: dump
-    source: .
-    source-type: local
-    organize:
-      check_ip.sh: bin/netcheck
-    stage:
-      - bin/netcheck
-      - README.md
-      - EXAMPLES.md
-    override-build: |
-      craftctl default
-      chmod +x $CRAFT_PART_INSTALL/bin/netcheck
-    stage-packages:
-      - telnet
-      - netcat-openbsd
-      - coreutils
-      - grep
-      - sed
-      - dnsutils
-      - iputils-ping
-      - curl
-      - openssl
-      - bc
-      - iproute2
-EOF
+python build_packages.py --snap
 ```
+**Output**: The compiled snap package will be copied to `dist/snap/netcheck_2.3.0_amd64.snap` (or the respective architecture of your host).
 
-### 2. Configuration Explained
+---
 
-#### Metadata Section:
-```yaml
-name: netcheck                    # Package name (must be unique in Snap Store)
-version: '1.2.0'                  # Version string
-summary: Short one-line description  # Max 78 characters
-description: |                    # Detailed multi-line description
-  Longer description here...
-```
+## Local Verification & Testing
 
-#### Build Settings:
-```yaml
-grade: stable                     # stable = production, devel = testing
-confinement: strict              # strict = sandboxed, classic = full access
-base: core22                     # Ubuntu 22.04 base system
-```
-
-#### Application Definition:
-```yaml
-apps:
-  netcheck:                       # Command name
-    command: bin/netcheck         # Path to executable
-    plugs:                        # Permissions needed
-      - network                   # Network access
-      - network-bind             # Bind to ports
-      - home                     # Access user's home directory
-```
-
-#### Build Configuration:
-```yaml
-parts:
-  netcheck:
-    plugin: dump                  # Simple file copy
-    source: .                     # Current directory
-    organize:                     # Rename files
-      check_ip.sh: bin/netcheck
-    stage-packages:               # Dependencies to bundle
-      - telnet
-      - netcat-openbsd
-```
-
-### 3. Confinement Levels Explained
-
-**Strict Confinement** (Recommended):
-```yaml
-confinement: strict
-apps:
-  netcheck:
-    plugs:
-      - network          # Can access network
-      - home            # Can read/write user's home
-      - network-bind    # Can listen on ports
-```
-
-**Classic Confinement** (Full System Access):
-```yaml
-confinement: classic
-# No restrictions, like traditional packages
-# Requires manual approval from Snap Store
-```
-
-**Devmode** (Development Only):
-```yaml
-confinement: devmode
-# For testing, not allowed in Snap Store
-```
-
-### 4. Build the Snap
-
+Install the compiled snap locally in developer mode:
 ```bash
-# Build locally
-snapcraft
+# Install package locally
+sudo snap install dist/snap/netcheck_2.3.0_amd64.snap --dangerous
 
-# This creates: netcheck_1.0.0_amd64.snap
+# Manually connect security plugs
+sudo snap connect netcheck:network-observe
+sudo snap connect netcheck:system-observe
+
+# Test CLI commands
+netcheck interfaces --public
+netcheck ping 8.8.8.8
 ```
 
-### 5. Test Locally
-
+To uninstall:
 ```bash
-# Install in devmode (for testing)
-sudo snap install netcheck_1.0.0_amd64.snap --devmode --dangerous
-
-# Test the command
-netcheck --help
-netcheck -q google.com 443
-netcheck --csv hosts.csv
-
-# Check snap info
-snap info netcheck
-snap list netcheck
-
-# View logs
-snap logs netcheck
-
-# Uninstall
 sudo snap remove netcheck
 ```
 
-### 6. Publish to Snap Store
+---
 
+## Publishing to the Snap Store
+
+Publishing is automated using `publish_packages.py`:
+
+### Step 1: Login to Snapcraft
+Register or sign in to your developer profile at https://snapcraft.io/ and log in from your terminal:
 ```bash
-# Login (if not already)
 snapcraft login
-
-# Upload to Snap Store
-snapcraft upload netcheck_1.0.0_amd64.snap
-
-# Release to a channel
-snapcraft release netcheck 1 stable
-# Channels: stable, candidate, beta, edge
-
-# Check status
-snapcraft status netcheck
 ```
 
-### 7. Users Install From Store
-
+### Step 2: Register Application Name (One-time)
+If you are publishing this application for the first time:
 ```bash
-# Install from Snap Store
-sudo snap install netcheck
-
-# IMPORTANT: Connect network-observe for full functionality
-sudo snap connect netcheck:network-observe
-
-# This enables:
-# - ICMP ping tests (-p/--ping flag)
-# - Network interface information (--my-ip flag)
-
-# Auto-updates enabled by default!
-
-# Update manually
-sudo snap refresh netcheck
-
-# Uninstall
-sudo snap remove netcheck
+snapcraft register netcheck
 ```
 
-**What users will see without network-observe:**
-
-When trying to use `--my-ip` or `-p/--ping` without the connection:
-```
-Error: Permission denied
-```
-
-Solution shown to users:
+### Step 3: Run Publisher
+Uploads the newest compiled `.snap` file to the stable channel:
 ```bash
-sudo snap connect netcheck:network-observe
+python publish_packages.py --snap
 ```
 
-## Advanced snapcraft.yaml Features
-
-### Multiple Commands:
-```yaml
-apps:
-  netcheck:
-    command: bin/netcheck
-    plugs: [network, home]
-  
-  netcheck-daemon:
-    command: bin/netcheck-daemon
-    daemon: simple
-    plugs: [network, network-bind]
-```
-
-### Configuration Options:
-```yaml
-apps:
-  netcheck:
-    command: bin/netcheck
-    plugs: [network, home]
-    environment:
-      NETCHECK_TIMEOUT: 5
-      NETCHECK_JOBS: 10
-```
-
-### Build from Git:
-```yaml
-parts:
-  netcheck:
-    plugin: dump
-    source: https://github.com/yourusername/netcheck.git
-    source-type: git
-    source-branch: main
-```
-
-### Custom Build Commands:
-```yaml
-parts:
-  netcheck:
-    plugin: dump
-    source: .
-    override-build: |
-      craftctl default
-      # Custom build steps
-      chmod +x $CRAFT_PART_INSTALL/bin/netcheck
-      mkdir -p $CRAFT_PART_INSTALL/share/doc
-      cp README.md $CRAFT_PART_INSTALL/share/doc/
-```
-
-## Available Plugs (Permissions)
-
-Common plugs for network tools:
-```yaml
-plugs:
-  - network              # Network access (outgoing)
-  - network-bind         # Listen on ports
-  - home                 # Access home directory
-  - removable-media      # Access USB drives
-  - mount-observe        # Read /proc/mounts
-  - system-observe       # Read system info
-  - network-observe      # Read network info (/proc/net)
-  - process-control      # Send signals to processes
-  - hardware-observe     # Read hardware info
-```
-
-## Release Channels
-
-Snap Store has 4 channels:
-- **stable**: Production releases (default for users)
-- **candidate**: Release candidates (pre-release testing)
-- **beta**: Beta releases (early adopters)
-- **edge**: Development builds (bleeding edge)
-
+To test releases in a pre-release channel first (e.g. edge or beta):
 ```bash
-# Release to different channels
-snapcraft upload netcheck_1.0.0_amd64.snap
-snapcraft release netcheck 1 stable
-snapcraft release netcheck 1 beta
-
-# Users can choose channel
-sudo snap install netcheck --channel=beta
+python publish_packages.py --snap --channel edge
 ```
-
-## Complete Build Script
-
-Save as `build-snap.sh`:
-
+Users can install the edge variant using:
 ```bash
-#!/bin/bash
-set -e
-
-echo "Building Snap package for netcheck..."
-
-# Check if snapcraft is installed
-if ! command -v snapcraft &> /dev/null; then
-    echo "Error: snapcraft is not installed"
-    echo "Install with: sudo snap install snapcraft --classic"
-    exit 1
-fi
-
-# Clean previous builds
-snapcraft clean
-rm -f *.snap
-
-# Build the snap
-echo "Building snap package..."
-snapcraft --verbose
-
-# Get the snap filename
-SNAP_FILE=$(ls netcheck_*.snap | head -1)
-
-if [ -f "$SNAP_FILE" ]; then
-    echo ""
-    echo "✅ Snap package created: $SNAP_FILE"
-    echo ""
-    echo "To test locally:"
-    echo "  sudo snap install $SNAP_FILE --devmode --dangerous"
-    echo "  netcheck --help"
-    echo ""
-    echo "To publish to Snap Store:"
-    echo "  snapcraft login"
-    echo "  snapcraft upload $SNAP_FILE"
-    echo "  snapcraft release netcheck <revision> stable"
-    echo ""
-    echo "Package info:"
-    snap info --verbose "$SNAP_FILE" || true
-else
-    echo "❌ Build failed - no snap package found"
-    exit 1
-fi
+sudo snap install netcheck --channel=edge
 ```
-
-## Debugging Snap Issues
-
-```bash
-# Run in devmode (no confinement)
-sudo snap install netcheck_1.0.0_amd64.snap --devmode --dangerous
-
-# Check logs
-snap logs netcheck
-snap logs netcheck -f  # Follow logs
-
-# Check interfaces
-snap connections netcheck
-
-# Shell into snap environment
-sudo snap run --shell netcheck
-echo $PATH
-ls /snap/netcheck/current/
-
-# Check confinement
-snap list netcheck  # Shows devmode/strict/classic
-```
-
-## Publishing Checklist
-
-- [ ] Create snapcraft.io account
-- [ ] Register app name: `snapcraft register netcheck`
-- [ ] Test locally with `--devmode --dangerous`
-- [ ] Test all features work in strict confinement
-- [ ] Update version in snapcraft.yaml
-- [ ] Build: `snapcraft`
-- [ ] Upload: `snapcraft upload netcheck_x.x.x.snap`
-- [ ] Release: `snapcraft release netcheck <rev> stable`
-- [ ] Test install from store: `snap install netcheck`
-- [ ] Test network-observe: `snap connect netcheck:network-observe`
-- [ ] Update README with snap install instructions
-
-## Troubleshooting
-
-### Users Report "Permission Denied" Errors
-
-**Symptom:**
-```bash
-$ netcheck --my-ip
-Error: Permission denied
-
-$ netcheck -p google.com
-Error: Operation not permitted
-```
-
-**Cause:**
-The snap needs `network-observe` plug for ICMP ping and network interface access.
-
-**Solution:**
-```bash
-sudo snap connect netcheck:network-observe
-```
-
-**Check plug status:**
-```bash
-snap connections netcheck
-
-# Output should show:
-# Interface          Plug                     Slot
-# network            netcheck:network         :network
-# network-bind       netcheck:network-bind    :network-bind
-# network-observe    netcheck:network-observe :network-observe  # Must be connected
-```
-
-### Snap Build Issues
-
-**Issue: "unbound variable" error**
-- Ensure arrays are initialized: `declare -A array=()`
-- Use `set +u` around array length checks if needed
-
-**Issue: Dependencies not found (curl, openssl, bc)**
-- Add packages to `stage-packages` section
-- Include binaries in `stage` section:
-  ```yaml
-  stage:
-    - usr/bin/*
-    - usr/sbin/*
-    - lib/*
-  ```
-
-**Issue: Snap not finding staged files**
-- Check with: `find parts/netcheck/install -name "curl"`
-- Verify staging: `find prime/usr/bin -type f`
-
-## Automatic Builds (CI/CD)
-
-Use GitHub Actions to auto-build:
-
-```yaml
-# .github/workflows/snap.yml
-name: Build Snap
-
-on:
-  push:
-    tags:
-      - 'v*'
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: snapcore/action-build@v1
-      - uses: snapcore/action-publish@v1
-        with:
-          snap: netcheck_*.snap
-          release: stable
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAP_TOKEN }}
-```
-
-## Resources
-
-- **Snap Store**: https://snapcraft.io/
-- **Documentation**: https://snapcraft.io/docs
-- **Forum**: https://forum.snapcraft.io/
-- **Dashboard**: https://dashboard.snapcraft.io/
-
-## Summary
-
-Creating and publishing a Snap:
-
-1. ✅ Create `snap/snapcraft.yaml`
-2. ✅ Configure confinement and plugs
-3. ✅ Build with `snapcraft`
-4. ✅ Test locally
-5. ✅ Login to Snap Store
-6. ✅ Upload and release
-7. ✅ Users get auto-updates!
-
-**Snap vs DEB:**
-- **Snap**: Universal, auto-updates, sandboxed (modern)
-- **DEB**: Traditional, manual updates, distribution-specific
-
-Recommend publishing **both** for maximum reach!
