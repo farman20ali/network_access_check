@@ -382,6 +382,37 @@ def _run_serve(args, env_jobs: int) -> bool:
 
 
 
+def _run_udp(args) -> bool:
+    """Run a UDP probe check."""
+    from netcheck.modules.udp import check_udp
+    use_color = None if not args.no_color else False
+    fmt = "json" if args.json else args.format
+
+    result = check_udp(args.host, args.port, timeout=args.timeout)
+    results = [result]
+    _record_results_and_check_alerts(results, "udp", args)
+    print(_fmt_output(results, fmt, verbose=args.verbose, use_color=use_color))
+    return result["success"]
+
+
+def _run_mtr(args) -> bool:
+    """Run an MTR-style hop-by-hop latency check."""
+    from netcheck.modules.mtr import mtr
+    use_color = None if not args.no_color else False
+    fmt = "json" if args.json else args.format
+
+    result = mtr(
+        args.host,
+        count=args.count,
+        max_hops=args.max_hops,
+        timeout=args.timeout,
+    )
+    results = [result]
+    _record_results_and_check_alerts(results, "mtr", args)
+    print(_fmt_output(results, fmt, verbose=args.verbose, use_color=use_color))
+    return result["success"]
+
+
 def _run_mcp(sub_args: List[str]) -> None:
     """Handle: netcheck mcp [install|status]"""
     if not sub_args or sub_args[0] == "start":
@@ -438,6 +469,7 @@ def _run_config(sub_args: List[str]) -> None:
 SUBCOMMANDS = frozenset({
     "tcp", "dns", "http", "ssl", "ping",
     "interfaces", "ports", "traceroute", "scan", "whois", "mcp", "config", "serve",
+    "udp", "mtr",
 })
 
 
@@ -490,6 +522,13 @@ def handle_subcommands(
         _build_whois_parser(base)
     elif subcommand == "serve":
         _build_serve_parser(base)
+    elif subcommand == "udp":
+        base.add_argument("host")
+        base.add_argument("port", type=int)
+    elif subcommand == "mtr":
+        base.add_argument("host")
+        base.add_argument("-c", "--count", type=int, default=3)
+        base.add_argument("-m", "--max-hops", type=int, default=30)
     else:
         base.print_help()
         sys.exit(EXIT_BAD_ARGS)
@@ -509,6 +548,8 @@ def handle_subcommands(
         "scan":       lambda: _run_scan(args),
         "whois":      lambda: _run_whois(args),
         "serve":      lambda: _run_serve(args, env_jobs),
+        "udp":        lambda: _run_udp(args),
+        "mtr":        lambda: _run_mtr(args),
     }
     execute_fn = _dispatch[subcommand]
 

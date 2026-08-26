@@ -43,6 +43,7 @@ OPTIONS:
     -f, --format <format>       Output format: text, json, csv, xml (default: text)
     -c, --combined              Create combined report with all results
     -q, --quick <host> <port>   Quick test mode (supports ranges: 80,443 or 8000-8100)
+    -q, --quick <host:port>    Shorthand: -q 8.8.8.8:53  or  -q host:80,443  or  -q host:8000-9000
     -o, --output <file>         Save quick mode results to file
     -d, --dns <host>            Resolve DNS and show IP address (accepts URLs)
     -p, --ping <host>           Ping host using ICMP (accepts IPs/URLs/ranges)
@@ -225,6 +226,28 @@ def main() -> None:
                            env_timeout=env_timeout, env_jobs=env_jobs, env_no_color=env_no_color)
         return
 
+    # 5b. Bare target shorthand: netcheck host:port[,port|-range]
+    #     e.g.  netcheck 8.8.8.8:53
+    #           netcheck google.com:80,443
+    #           netcheck 192.168.1.1:8000-8100
+    #           netcheck [::1]:80
+    from netcheck.utils.range_expanders import parse_target_string
+    _maybe_host, _maybe_port = parse_target_string(first_arg)
+    if _maybe_port is not None:
+        run_quick_test(
+            _maybe_host,
+            _maybe_port,
+            timeout=env_timeout,
+            max_jobs=env_jobs,
+            fmt="text",
+            output_file=None,
+            retries=1,
+            retry_delay=1.0,
+            verbose=False,
+            show_filter="all",
+        )
+        return
+
     # 6. Legacy flags mode
     from netcheck.cli.args import make_legacy_parser
     parser = make_legacy_parser(env_timeout=env_timeout, env_jobs=env_jobs, env_no_color=env_no_color)
@@ -315,13 +338,25 @@ def main() -> None:
         sys.exit(EXIT_OK if res["success"] else EXIT_FAIL)
 
     if args.quick is not None:
-        if len(args.quick) != 2:
-            print("Error: -q/--quick requires exactly 2 arguments: <host> and <port>", file=sys.stderr)
+        if len(args.quick) == 1:
+            # User passed a single arg — try to parse it as host:port
+            from netcheck.utils.range_expanders import parse_target_string
+            _h, _p = parse_target_string(args.quick[0])
+            if _p is not None:
+                run_quick_test(_h, _p, timeout, args.jobs, fmt, args.output,
+                               retries, retry_delay, verbose=verbose, show_filter=args.show)
+                return
+            else:
+                print("Error: -q/--quick requires <host> <port>, or <host:port>.", file=sys.stderr)
+                sys.exit(EXIT_BAD_ARGS)
+        elif len(args.quick) == 2:
+            host, port_str = args.quick
+            run_quick_test(host, port_str, timeout, args.jobs, fmt, args.output,
+                           retries, retry_delay, verbose=verbose, show_filter=args.show)
+            return
+        else:
+            print("Error: -q/--quick accepts 1 (host:port) or 2 (<host> <port>) arguments.", file=sys.stderr)
             sys.exit(EXIT_BAD_ARGS)
-        host, port_str = args.quick
-        run_quick_test(host, port_str, timeout, args.jobs, fmt, args.output,
-                       retries, retry_delay, verbose=verbose, show_filter=args.show)
-        return
 
     # Batch modes
     from netcheck.cli.batch import (

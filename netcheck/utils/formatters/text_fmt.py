@@ -424,6 +424,69 @@ def _fmt_whois(res: Dict[str, Any], c: dict) -> str:
     return "\n".join(lines)
 
 
+def _fmt_udp(res: Dict[str, Any], c: dict) -> str:
+    meta = res.get("metadata", {})
+    target = res.get("target", "")
+    success = res.get("success", False)
+    error = res.get("error", "")
+    latency = res.get("latency_ms")
+    lines = []
+    lines.append(f"UDP Connectivity Test for: {target}")
+    lines.append("━" * 40)
+    lines.append(f"Sending UDP probe to {target}...")
+    lines.append("")
+
+    status_icon = f"{c['green']}✅ OPEN/FILTERED{c['reset']}" if success else f"{c['red']}❌ CLOSED{c['reset']}"
+    service_name = meta.get("service", "")
+    ip_addr = meta.get("ip") or "Unknown"
+    host_to_show = target if len(target) <= 37 else target[:34] + "..."
+
+    lines.append("┌─────────────────────────────────────────────┐")
+    lines.append(f"│ Host: {pad_right(host_to_show, 37)} │")
+    lines.append(f"│ Port: {pad_right(str(meta.get('port', '')), 37)} │")
+    if service_name:
+        lines.append(f"│ Service: {pad_right(service_name, 34)} │")
+    lines.append("├─────────────────────────────────────────────┤")
+    lines.append(f"│ Status: {pad_right(status_icon, 35)} │")
+    lines.append(f"│ IP Address: {pad_right(ip_addr, 31)} │")
+    lines.append(f"│ Latency: {pad_right(f'{latency}ms' if latency is not None else 'N/A', 34)} │")
+    if error:
+        err_str = str(error) if len(str(error)) <= 35 else str(error)[:32] + "..."
+        lines.append(f"│ Reason: {pad_right(err_str, 35)} │")
+    lines.append("└─────────────────────────────────────────────┘")
+    lines.append("")
+    lines.append("━" * 40)
+    return "\n".join(lines)
+
+
+def _fmt_mtr(res: Dict[str, Any], c: dict) -> str:
+    meta = res.get("metadata", {})
+    target = res.get("target", "")
+    lines = []
+    lines.append(f"MTR Route & Latency report for: {target}")
+    lines.append("━" * 80)
+    lines.append(f"{'Hop':3} {'IP Address':15} {'Loss%':5} {'Sent':4} {'Recv':4} {'Min':6} {'Avg':6} {'Max':6} {'Hostname'}")
+    lines.append("─" * 80)
+    for h in meta.get("hops", []):
+        hop_num = h.get("hop")
+        ip = h.get("ip", "*")
+        loss = f"{h.get('loss_pct', 0.0):.1f}%"
+        sent = h.get("sent", 0)
+        recv = h.get("recv", 0)
+        min_ms = f"{h.get('min_ms', 0.0):.1f}" if h.get("min_ms") is not None else "*"
+        avg_ms = f"{h.get('avg_ms', 0.0):.1f}" if h.get("avg_ms") is not None else "*"
+        max_ms = f"{h.get('max_ms', 0.0):.1f}" if h.get("max_ms") is not None else "*"
+        name = h.get("name", "*")
+        name_str = name if name != ip else ""
+        lines.append(
+            f"{hop_num:<3} {pad_right(ip, 15)} {pad_right(loss, 5)} {sent:<4} {recv:<4} "
+            f"{pad_right(min_ms, 6)} {pad_right(avg_ms, 6)} {pad_right(max_ms, 6)} {name_str}"
+        )
+    lines.append("━" * 80)
+    return "\n".join(lines)
+
+
+
 def _fmt_fallback_single(res: Dict[str, Any], c: dict) -> str:
     """Generic box for any unknown single check type."""
     target = res.get("target", "")
@@ -521,6 +584,8 @@ _SINGLE_DISPATCH = {
     "traceroute": lambda res, c, v: _fmt_traceroute(res, c),
     "scan":       lambda res, c, v: _fmt_scan(res, c),
     "whois":      lambda res, c, v: _fmt_whois(res, c),
+    "udp":        lambda res, c, v: _fmt_udp(res, c),
+    "mtr":        lambda res, c, v: _fmt_mtr(res, c),
 }
 
 
