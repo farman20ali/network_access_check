@@ -5,6 +5,29 @@ All notable changes to netcheck will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-08-26
+
+### Added
+- **OS Keychain Credential Storage**: All sensitive alerting credentials (SMTP password, SMTP sender, SMTP recipients, Slack webhook URL, generic webhook bearer token) are now stored in the OS credential manager (Windows Credential Manager, macOS Keychain, GNOME Keyring/KWallet) via the `keyring` library. `config.yaml` no longer stores any secrets.
+- **`config purge`**: Wipes `config.yaml` and clears all five keyring secrets in one command — useful for machine decommission or full credential rotation.
+- **`config test-alert <channel>`**: Fires a real test alert immediately to `email`, `slack`, `desktop`, or `webhook` without running a watch loop. Reports `SUCCESS` or `FAILED` with full error output.
+- **`config show` keyring panel**: Displays both YAML config values and OS keyring status side-by-side with masked credential previews (e.g. `se...@gmail.com`).
+- **Directional alert cooldowns**: UP and DOWN cooldown timers are now tracked independently per target so that recovery and re-failure alerts are never incorrectly suppressed by a cross-direction cooldown.
+- **`--alert-on` flag**: Filter which state transitions trigger alerts — `any` (default), `down`, or `up`.
+- **Native desktop notifications**: `--alert desktop` uses WinRT Action Center toasts on Windows 10/11 (PowerShell fallback to balloon tip), `osascript` on macOS, and `notify-send` on Linux, with optional `plyer` support.
+- **Watch mode rolling alert log**: A persistent "Recent Alerts & Logs" panel (up to 8 entries) is rendered at the bottom of the watch window so screen refreshes no longer erase alert history.
+- **Watch loop resilience**: `SystemExit` raised by subcommands (e.g. `traceroute`) is now caught inside the watch loop so the loop continues uninterrupted.
+- **Legacy single-dash option normalisation**: `-tcp`, `-udp`, `-mtr`, `-dns`, `-http`, `-ssl`, `-ping`, `-scan`, `-whois` are normalised to their subcommand equivalents at the CLI entry point.
+- **6 new unit tests** in `test_alerting.py`: directional cooldown correctness, `alert_on` filter all three modes, keyring getter mocking.
+- **8 new unit tests** in `test_config.py`: `purge()`, `show()` keyring display formatting, `get_smtp_user()`, `get_smtp_to()`.
+
+### Fixed
+- **SMTP `SMTPAuthenticationError` / header accumulation bug**: Rewrote `send_email_alert` to use `smtp.send_message()` (instead of `smtp.sendmail()`) and `del msg["To"]` before each recipient, matching the proven reference implementation. Multi-recipient sends now reuse a single SMTP connection.
+
+### Changed
+- `--alert-cooldown` default reduced from 300 s to 60 s to be more responsive in desktop/development usage.
+- `config show` output extended with a "Keyring / Secure Store" section showing all five credential statuses.
+
 ## [2.3.0] - 2026-07-30
 
 ### Added

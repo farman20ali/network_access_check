@@ -1,10 +1,10 @@
 # Network Connectivity Checker (`netcheck`)
 
-[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)](#)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-299%20passed-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-305%20passed-brightgreen.svg)](#)
 
 A premium, cross-platform, production-grade **Network Intelligence Engine & CLI** written in pure Python 3. Zero external dependencies. High-concurrency diagnostics, structured output (JSON/CSV/XML), watch/loop mode, shell completions, man page, and an integrated **Model Context Protocol (MCP) Server** for AI assistants.
 
@@ -48,7 +48,7 @@ sudo snap connect netcheck:network-observe   # enables ping & interfaces
 
 ### Option 3: Debian package (`.deb`)
 ```bash
-sudo dpkg -i netcheck_2.3.0_amd64.deb
+sudo dpkg -i netcheck_2.4.0_amd64.deb
 ```
 
 ### Option 4: Chocolatey (Windows)
@@ -58,7 +58,7 @@ choco install netcheck
 
 ### Option 5: macOS `.pkg`
 ```bash
-sudo installer -pkg netcheck-2.3.0.pkg -target /
+sudo installer -pkg netcheck-2.4.0.pkg -target /
 ```
 
 ### Option 6: Linux installer (with shell completions + man page)
@@ -157,6 +157,9 @@ netcheck -q 192.168.1.1 80,443 --show success    # Legacy quick-mode filtering
 | `--no-color` | — | Disable ANSI color output |
 | `-w, --watch` | — | Enable watch/loop mode |
 | `-i, --interval` | `2.0` | Watch refresh interval in seconds |
+| `--alert` | — | Comma-separated alert channels: `email`, `slack`, `webhook`, `desktop` |
+| `--alert-on` | `any` | Which transitions fire alerts: `any`, `down`, `up` |
+| `--alert-cooldown` | `60` | Seconds between repeated alerts per direction |
 | `-v, --version` | — | Print version and exit |
 
 ### Environment Variables
@@ -323,16 +326,29 @@ NetCheck features a robust, zero-dependency configuration, alerting, and Prometh
 Configure SMTP, Slack, Webhooks, and default check timeouts safely:
 ```bash
 netcheck config init          # Run interactive wizard to generate config
-netcheck config show          # Print current configuration (sensitive fields masked)
+netcheck config show          # Print current configuration + OS keychain status
 netcheck config path          # Print path to config.yaml file
 netcheck config edit          # Open config.yaml in your local $EDITOR
+netcheck config purge         # Delete config.yaml AND wipe all keychain secrets
 ```
 
 **Credential Safety (System Keychain):**
-Passwords and tokens should never be stored in plain text. Securely store your SMTP password in the OS credential manager (Keychain on macOS, Credential Manager on Windows, GNOME Keyring/KWallet on Linux):
+All sensitive credentials are stored in the OS credential manager (Keychain on macOS, Credential Manager on Windows, GNOME Keyring/KWallet on Linux). `config.yaml` never stores secrets.
 ```bash
-netcheck config set-password email      # Secures SMTP password in OS keychain
-netcheck config clear-password email    # Removes password from OS keychain
+netcheck config set-password email      # SMTP app-password
+netcheck config set-password smtp_user  # SMTP sender address
+netcheck config set-password smtp_to    # SMTP recipient address(es)
+netcheck config set-password slack      # Slack incoming webhook URL
+netcheck config set-password webhook    # Generic webhook bearer token
+netcheck config clear-password email    # Remove a specific keychain entry
+```
+
+**Test your alert channels instantly:**
+```bash
+netcheck config test-alert email      # Send a real test email now
+netcheck config test-alert slack      # Post a test Slack message now
+netcheck config test-alert desktop    # Trigger a test desktop notification
+netcheck config test-alert webhook    # POST a test webhook payload
 ```
 
 ### 2. Alerting Engine
@@ -340,21 +356,32 @@ netcheck config clear-password email    # Removes password from OS keychain
 Trigger alerts on state **changes** (UP ⇄ DOWN transition) during watch or serve loops. This prevents alert storms from repeated failures.
 
 Supported channels:
-- **SMTP Email** (using secure STARTTLS/SSL and Keychain password lookup)
-- **Slack** (via incoming webhook URL)
-- **Generic Webhook** (JSON POST with token authentication and template substitution)
-- **Desktop Notifications** (native pop-up notifications)
+- **SMTP Email** — STARTTLS with Gmail App Password support; OS keychain credential lookup
+- **Slack** — incoming webhook URL stored securely in OS keychain
+- **Generic Webhook** — JSON POST with Bearer token stored in keychain and `{target}` template substitution
+- **Desktop Notifications** — WinRT Action Center (Windows 10/11), `osascript` (macOS), `notify-send` (Linux)
+
+**Alert flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--alert` | — | Comma-separated channels: `email`, `slack`, `webhook`, `desktop` |
+| `--alert-on` | `any` | Which transitions fire alerts: `any`, `down`, `up` |
+| `--alert-cooldown` | `60` | Minimum seconds between alerts **per direction** |
 
 **Usage Examples:**
 ```bash
-# Alert via email and Slack on TCP connectivity changes
+# Alert via email and Slack on any TCP state change
 netcheck tcp api.example.com 443 -w --alert email,slack
 
-# Alert via desktop notifications on DNS changes
-netcheck dns google.com -w --alert desktop
+# Only alert when a target goes DOWN (suppress UP/recovery alerts)
+netcheck tcp api.example.com 443 -w --alert slack --alert-on down
 
-# Trigger alerts with a custom 10-minute cooldown
-netcheck tcp host.com 443 -w --alert slack --alert-cooldown 600
+# Alert on recovery only, via desktop notification
+netcheck http https://api.example.com -w --alert desktop --alert-on up
+
+# Alert via desktop notifications on DNS changes, 5-minute cooldown
+netcheck dns google.com -w --alert desktop --alert-cooldown 300
 ```
 
 #### 🧪 How to Test Alerts Locally
@@ -513,7 +540,7 @@ network_access_check/
 │   ├── macos/
 │   ├── snap/
 │   └── windows/
-├── tests/                     ← pytest test suite (68 tests)
+├── tests/                     ← pytest test suite (305 tests)
 ├── docs/                      ← Guides and release notes
 ├── .github/workflows/         ← CI (ci.yml) + Release (release.yml)
 ├── build_packages.py          ← Build orchestration script

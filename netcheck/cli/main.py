@@ -56,6 +56,9 @@ OPTIONS:
     --csv                       Input file is in CSV format (host,port)
     --json                      Output in JSON format (alias for -f json)
     --show <filter>             Filter -q/tcp results: all (default), success, or fail
+    --alert <channels>          Alert channels to use: email,slack,webhook,desktop
+    --alert-on <trigger>        When to alert: any (default), down, up
+    --alert-cooldown <seconds>  Min seconds between same-direction alerts (default: 60)
     -h, --help                  Show this help message
     -v, --version               Show version information
 
@@ -65,6 +68,8 @@ SUBCOMMANDS (v{__version__}):
     http <url>                  Validate HTTP response and size
     ssl <host> [port]           Validate SSL/TLS certificate validity
     ping <host>                 Ping host via native ICMP
+    udp <host> <port>           UDP probe check
+    mtr <host>                  MTR-style hop-by-hop latency analysis
     interfaces                  List local network interfaces
     ports                       List local listening ports and services
     traceroute <host>           Trace route to destination host
@@ -76,12 +81,15 @@ SUBCOMMANDS (v{__version__}):
     config [action]             Manage configuration (init, show, path, set-password, clear-password)
     serve <hosts_file>          Continuous check loop exposing Prometheus metrics
 
-
-
 WATCH MODE:
     Any subcommand can be looped with:
       -w, --watch               Enable watch mode (clear screen and refresh)
       -i, --interval <seconds>  Refresh interval in seconds (default: 2.0)
+
+    Combine with --alert to get notified on UP/DOWN transitions:
+      {cmd_name} tcp google.com 443 -w --alert slack
+      {cmd_name} tcp google.com 443 -w --alert slack --alert-on down
+      {cmd_name} http https://example.com -w --alert email,slack -i 30
 
 EXIT CODES:
     0   All checks passed
@@ -92,7 +100,46 @@ EXIT CODES:
 INPUT:
     input_file                  File containing IP:port pairs (one per line)
                                If not specified, reads from stdin
-                               Use --csv flag for CSV format files"""
+                               Use --csv flag for CSV format files
+
+EXAMPLES:
+    # Quick TCP check (multiple formats)
+    {cmd_name} -q google.com 443
+    {cmd_name} -q 8.8.8.8:53
+    {cmd_name} 192.168.1.1:80,443
+    {cmd_name} -q myserver.com 8000-8010
+
+    # Subcommand style
+    {cmd_name} tcp google.com 443
+    {cmd_name} dns github.com
+    {cmd_name} http https://example.com
+    {cmd_name} ssl github.com
+    {cmd_name} ping 8.8.8.8
+    {cmd_name} traceroute google.com
+    {cmd_name} scan 192.168.1.1 -p 1-1000
+    {cmd_name} whois google.com
+    {cmd_name} mtr 8.8.8.8
+
+    # Watch mode (loops until Ctrl+C)
+    {cmd_name} tcp google.com 443 -w
+    {cmd_name} tcp google.com 443 -w -i 10 --alert slack
+    {cmd_name} tcp google.com 443 -w -i 10 --alert slack --alert-on down
+    {cmd_name} http https://myapi.com -w --alert email,desktop --alert-cooldown 30
+
+    # Batch mode
+    {cmd_name} targets.txt
+    echo "8.8.8.8 53" | {cmd_name}
+    {cmd_name} --csv hosts.csv -f json
+
+    # Configuration & alerts
+    {cmd_name} config init
+    {cmd_name} config set-password slack
+    {cmd_name} config show
+
+    # Local info
+    {cmd_name} --my-ip
+    {cmd_name} interfaces
+    {cmd_name} ports"""
     print(help_text)
 
 
@@ -181,6 +228,11 @@ def main() -> None:
             sys.argv[idx] = "--status"
         elif arg == "-cert":
             sys.argv[idx] = "--cert"
+        elif arg in ("-tcp", "-udp", "-mtr", "-scan", "-whois",
+                     "-http", "-ssl", "-traceroute", "-interfaces",
+                     "-ports", "-serve", "-config"):
+            # Route bare -subcmd → subcmd (e.g. -tcp → tcp)
+            sys.argv[idx] = arg[1:]
 
     # 2. Force UTF-8 on stdout/stderr (prevents UnicodeEncodeError on Windows)
     try:

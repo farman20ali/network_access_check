@@ -142,6 +142,38 @@ class TestAlertStateManagerCooldown:
         e = mgr.update("h:80", success=True)   # UP immediately
         assert e is not None
 
+    def test_directional_cooldown(self):
+        mgr = AlertStateManager(flap_threshold=1, cooldown_seconds=300)
+        mgr.update("h:80", success=True)    # Baseline: UP
+
+        # DOWN event: should fire
+        e1 = mgr.update("h:80", success=False)
+        assert e1 is not None
+        assert e1.new_state == "DOWN"
+
+        # UP recovery event: should fire (even though it's within 300s of DOWN)
+        e2 = mgr.update("h:80", success=True)
+        assert e2 is not None
+        assert e2.new_state == "UP"
+
+        # Second DOWN event: should be suppressed by DOWN cooldown (within 300s)
+        e3 = mgr.update("h:80", success=False)
+        assert e3 is None
+
+    def test_alert_on_filter(self):
+        mgr = AlertStateManager(flap_threshold=1)
+        mgr.update("h:80", success=True)    # Baseline: UP
+
+        # With alert_on="up", DOWN transition is ignored
+        e1 = mgr.update("h:80", success=False, alert_on="up")
+        assert e1 is None
+        assert mgr.get_state("h:80") == "DOWN"
+
+        # Now transition back UP: with alert_on="up", this should fire
+        e2 = mgr.update("h:80", success=True, alert_on="up")
+        assert e2 is not None
+        assert e2.new_state == "UP"
+
 
 class TestAlertStateManagerStats:
     def test_get_all_states(self):
@@ -226,6 +258,14 @@ class TestAlertEvent:
 # ===========================================================================
 
 class TestAlertDispatcher:
+    @pytest.fixture(autouse=True)
+    def mock_keyring_env(self):
+        with patch("netcheck.utils.config.NetCheckConfig.get_slack_webhook", return_value=""), \
+             patch("netcheck.utils.config.NetCheckConfig.get_webhook_token", return_value=""), \
+             patch("netcheck.utils.config.NetCheckConfig.get_smtp_user", return_value=""), \
+             patch("netcheck.utils.config.NetCheckConfig.get_smtp_to", return_value=""):
+            yield
+
     def _make_event(self) -> AlertEvent:
         return AlertEvent(
             target="example.com:443",

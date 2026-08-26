@@ -49,8 +49,19 @@ def make_base_parser(
                         help="Disable ANSI color output")
     parser.add_argument("--alert", default="",
                         help="Comma-separated alert channels (e.g. email,slack,webhook,desktop)")
-    parser.add_argument("--alert-cooldown", type=float, default=300.0,
-                        help="Cooldown between alerts in seconds (default: %(default)s)")
+    parser.add_argument("--alert-cooldown", type=float, default=60.0,
+                        help="Per-direction cooldown between repeated alerts in seconds (default: %(default)s)")
+    parser.add_argument(
+        "--alert-on",
+        default="any",
+        choices=["any", "down", "up"],
+        help=(
+            "When to fire alerts: "
+            "'any'=on every state change (default), "
+            "'down'=only when target goes DOWN, "
+            "'up'=only on recovery to UP"
+        ),
+    )
     return parser
 
 
@@ -87,6 +98,8 @@ def make_legacy_parser(
     parser.add_argument("--show", default="all",
                         choices=["all", "success", "fail"])
     parser.add_argument("--alert", default="")
-    parser.add_argument("--alert-cooldown", type=float, default=300.0)
+    parser.add_argument("--alert-cooldown", type=float, default=60.0)
+    parser.add_argument("--alert-on", default="any",
+                        choices=["any", "down", "up"])
     parser.add_argument("input_file", nargs="?")
     return parser

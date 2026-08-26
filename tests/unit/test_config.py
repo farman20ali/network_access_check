@@ -262,3 +262,44 @@ class TestNetCheckConfigShow:
             NetCheckConfig.show()
         # Original data dict should be unchanged
         assert data["webhook"]["token"] == "mysecret"
+
+    def test_show_displays_keyring_status(self):
+        data = {"timeout": 5}
+        with patch("netcheck.utils.config._keyring_get", return_value="test@example.com") as mock_get, \
+             patch.object(NetCheckConfig, "load", return_value=data):
+            result = NetCheckConfig.show()
+        assert "=== OS Keyring Status ===" in result
+        assert "SMTP Username/Sender" in result
+        assert "te...@example.com" in result  # masked representation of test@example.com
+
+    def test_get_smtp_user_keyring_priority(self):
+        # Keyring has priority over config.yaml
+        cfg_data = {"smtp": {"user": "config@example.com"}}
+        with patch("netcheck.utils.config._keyring_get", return_value="keyring@example.com") as mock_get, \
+             patch.object(NetCheckConfig, "load", return_value=cfg_data):
+            user = NetCheckConfig.get_smtp_user()
+        assert user == "keyring@example.com"
+
+    def test_get_smtp_to_config_fallback(self):
+        # Keyring returns None, fall back to config.yaml
+        cfg_data = {"smtp": {"to": "fallback@example.com"}}
+        with patch("netcheck.utils.config._keyring_get", return_value=None) as mock_get, \
+             patch.object(NetCheckConfig, "load", return_value=cfg_data):
+            to = NetCheckConfig.get_smtp_to()
+        assert to == "fallback@example.com"
+
+    def test_purge_clears_secrets_and_deletes_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "netcheck" / "config.yaml"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text("timeout: 5")
+
+            with patch("builtins.input", return_value="y"), \
+                 patch("netcheck.utils.config._keyring_delete") as mock_delete, \
+                 patch.object(NetCheckConfig, "path", return_value=config_path):
+                NetCheckConfig.purge()
+
+            # Keyring delete called for all known services
+            assert mock_delete.call_count == 5
+            # Config file deleted
+            assert not config_path.exists()

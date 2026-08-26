@@ -64,7 +64,8 @@ def _record_results_and_check_alerts(results: List[dict], check_type: str, args)
                 from netcheck.utils.config import NetCheckConfig
 
                 cfg = NetCheckConfig.load()
-                cooldown = getattr(args, "alert_cooldown", 300.0)
+                cooldown = getattr(args, "alert_cooldown", 60.0)
+                alert_on = getattr(args, "alert_on", "any")
 
                 alerts_section = cfg.get("alerts", {}) or cfg
                 flap_threshold = alerts_section.get("flap_threshold", 2)
@@ -79,9 +80,20 @@ def _record_results_and_check_alerts(results: List[dict], check_type: str, args)
                     success = r.get("success", False)
                     error_msg = r.get("error")
 
-                    event = manager.update(target, success, error_msg)
+                    event = manager.update(target, success, error_msg, alert_on=alert_on)
                     if event:
-                        dispatcher.dispatch(event)
+                        icon = "✅" if event.new_state == "UP" else "❌"
+                        alert_msg = (
+                            f"[alert] {icon} {target} is {event.new_state} "
+                            f"({event.old_state} → {event.new_state})"
+                        )
+                        print(f"\n{alert_msg}", file=sys.stderr)
+                        try:
+                            from netcheck.cli.watch import add_watch_log
+                            add_watch_log(alert_msg)
+                        except ImportError:
+                            pass
+                        dispatcher.dispatch(event, channels=channels)
             except Exception as exc:
                 print(f"[netcheck] Alert dispatch error: {exc}", file=sys.stderr)
 
@@ -451,10 +463,36 @@ def _run_config(sub_args: List[str]) -> None:
     elif action == "clear-password":
         service = sub_args[1] if len(sub_args) > 1 else "email"
         NetCheckConfig.clear_password(service)
+    elif action in ("purge", "remove", "reset"):
+        NetCheckConfig.purge()
+    elif action == "test-alert":
+        channel = sub_args[1] if len(sub_args) > 1 else "email"
+        from datetime import datetime, timezone
+
+        from netcheck.utils.alert_state import AlertEvent
+        from netcheck.utils.alerting import AlertDispatcher
+
+        print(f"Sending test alert to channel '{channel}'...")
+        event = AlertEvent(
+            target="netcheck-test-target",
+            old_state="UNKNOWN",
+            new_state="UP",
+            timestamp=datetime.now(timezone.utc),
+            consecutive=1,
+            last_error="Test event from NetCheck CLI config test-alert command",
+        )
+
+        cfg = NetCheckConfig.load()
+        dispatcher = AlertDispatcher(cfg)
+        results = dispatcher.dispatch(event, channels=[channel])
+
+        for ch, success in results.items():
+            status = "✅ SUCCESS" if success else "❌ FAILED"
+            print(f"Channel '{ch}' dispatch status: {status}")
     else:
         print(f"Unknown config subcommand: {action}", file=sys.stderr)
         print(
-            "Usage: netcheck config [init|edit|show|path|set-password <svc>|clear-password <svc>]",
+            "Usage: netcheck config [init|edit|show|path|set-password <svc>|clear-password <svc>|purge|test-alert <channel>]",
             file=sys.stderr,
         )
         sys.exit(EXIT_BAD_ARGS)

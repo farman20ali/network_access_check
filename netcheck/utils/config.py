@@ -153,13 +153,41 @@ class NetCheckConfig:
 
     @staticmethod
     def show() -> str:
-        """Return config as YAML string with sensitive fields masked."""
+        """Return config as YAML string with sensitive fields masked, plus keyring status."""
         import copy
 
         cfg = NetCheckConfig.load()
         masked = copy.deepcopy(cfg)
         _mask_sensitive(masked)
-        return _yaml_dump(masked)
+
+        output = []
+        output.append("=== Configuration File (yaml) ===")
+        output.append(f"Path: {NetCheckConfig.path()}")
+        output.append(_yaml_dump(masked))
+        output.append("\n=== OS Keyring Status ===")
+
+        services = {
+            "email": "SMTP Password",
+            "smtp_user": "SMTP Username/Sender",
+            "smtp_to": "SMTP Recipient",
+            "slack": "Slack Webhook URL",
+            "webhook": "Webhook Bearer Token",
+        }
+        for svc_key, label in services.items():
+            val = _keyring_get(_KEYCHAIN_SERVICE, svc_key)
+            if val:
+                # Mask the value for display
+                masked_val = "***"
+                if "@" in val:
+                    parts = val.split("@")
+                    masked_val = parts[0][:2] + "..." + "@" + parts[1]
+                elif val.startswith("https://"):
+                    masked_val = val[:24] + "..."
+                output.append(f"  {label:<22}: [SET] ({masked_val})")
+            else:
+                output.append(f"  {label:<22}: [NOT SET]")
+
+        return "\n".join(output)
 
     # ── Init wizard ────────────────────────────────────────────────────────
 
@@ -178,17 +206,45 @@ class NetCheckConfig:
 
         use_smtp = _prompt("Configure SMTP alerts? [y/N]", default="n").lower()
         if use_smtp == "y":
-            cfg["smtp"] = {
-                "host": _prompt("SMTP host"),
-                "port": int(_prompt("SMTP port", default="587")),
-                "user": _prompt("SMTP username"),
-                "to": _prompt("Alert recipient email"),
-                "use_tls": True,
-            }
+            host = _prompt("SMTP host", default="smtp.gmail.com")
+            port_str = _prompt("SMTP port", default="587")
+            try:
+                port = int(port_str)
+            except ValueError:
+                port = 587
+
+            secure_emails = _prompt("Store SMTP emails securely in OS keyring? [Y/n]", default="y").lower()
+            if secure_emails == "y":
+                user = _prompt("SMTP username (e.g. sender@gmail.com)")
+                to = _prompt("Alert recipient email")
+                if user:
+                    _keyring_set(_KEYCHAIN_SERVICE, "smtp_user", user)
+                if to:
+                    _keyring_set(_KEYCHAIN_SERVICE, "smtp_to", to)
+                cfg["smtp"] = {
+                    "host": host,
+                    "port": port,
+                    "use_tls": True,
+                }
+                print("✅ SMTP username and recipient stored securely in OS keyring.")
+            else:
+                user = _prompt("SMTP username (e.g. sender@gmail.com)")
+                to = _prompt("Alert recipient email")
+                cfg["smtp"] = {
+                    "host": host,
+                    "port": port,
+                    "user": user,
+                    "to": to,
+                    "use_tls": True,
+                }
 
         use_slack = _prompt("Configure Slack alerts? [y/N]", default="n").lower()
         if use_slack == "y":
-            cfg["slack"] = {"webhook_url": _prompt("Slack webhook URL")}
+            slack_url = _prompt("Slack webhook URL")
+            if slack_url:
+                _keyring_set(_KEYCHAIN_SERVICE, "slack", slack_url)
+                print("✅ Slack webhook URL stored securely in OS keychain.")
+            cfg["slack"] = {}  # no URL stored in config file
 
         NetCheckConfig.save(cfg)
         print(f"\n✅ Configuration saved to: {NetCheckConfig.path()}")
@@ -197,12 +253,32 @@ class NetCheckConfig:
 
     @staticmethod
     def set_password(service: str) -> None:
-        """Prompt for password securely and store in OS keychain."""
+        """Prompt for a secret and store it in the OS keychain.
+
+        Service-specific prompts:
+          - email      → SMTP password
+          - smtp_user  → SMTP username
+          - smtp_to    → SMTP recipient email
+          - slack      → Slack incoming webhook URL
+          - webhook    → HTTP webhook bearer token
+          - other      → generic password / secret
+        """
         import getpass
 
-        password = getpass.getpass(f"Password for {service}: ")
-        _keyring_set(_KEYCHAIN_SERVICE, service, password)
-        print(f"✅ Password stored in keychain for service '{service}'.")
+        _labels = {
+            "email":     "SMTP password",
+            "smtp_user": "SMTP username (e.g. sender@gmail.com)",
+            "smtp_to":   "SMTP recipient email address",
+            "slack":     "Slack webhook URL (starts with https://hooks.slack.com/...)",
+            "webhook":   "Webhook bearer token",
+        }
+        label = _labels.get(service, f"secret for '{service}'")
+        secret = getpass.getpass(f"Enter {label}: ")
+        if not secret.strip():
+            print("Aborted — nothing stored.", file=sys.stderr)
+            return
+        _keyring_set(_KEYCHAIN_SERVICE, service, secret.strip())
+        print(f"✅ Stored securely in OS keychain for service '{service}'.")
 
     @staticmethod
     def clear_password(service: str) -> None:
@@ -214,6 +290,102 @@ class NetCheckConfig:
     def get_password(service: str) -> Optional[str]:
         """Retrieve password from OS keychain (never from config file)."""
         return _keyring_get(_KEYCHAIN_SERVICE, service)
+
+    @staticmethod
+    def get_slack_webhook() -> str:
+        """
+        Return the Slack webhook URL.
+
+        Priority:
+          1. NETCHECK_SLACK_WEBHOOK environment variable
+          2. OS keyring (stored via ``netcheck config set-password slack``)
+          3. Empty string (alerts silently skipped)
+        """
+        env_val = os.environ.get("NETCHECK_SLACK_WEBHOOK", "")
+        if env_val:
+            return env_val
+        return _keyring_get(_KEYCHAIN_SERVICE, "slack") or ""
+
+    @staticmethod
+    def get_webhook_token() -> str:
+        """
+        Return the generic webhook bearer token from keyring.
+
+        Priority:
+          1. NETCHECK_WEBHOOK_TOKEN environment variable
+          2. OS keyring (stored via ``netcheck config set-password webhook``)
+          3. Empty string
+        """
+        env_val = os.environ.get("NETCHECK_WEBHOOK_TOKEN", "")
+        if env_val:
+            return env_val
+        return _keyring_get(_KEYCHAIN_SERVICE, "webhook") or ""
+
+    @staticmethod
+    def get_smtp_user() -> str:
+        """
+        Return the SMTP username.
+
+        Priority:
+          1. NETCHECK_SMTP_USER environment variable
+          2. OS keyring (stored via ``netcheck config set-password smtp_user``)
+          3. Value in config.yaml
+        """
+        env_val = os.environ.get("NETCHECK_SMTP_USER", "")
+        if env_val:
+            return env_val
+        keyring_val = _keyring_get(_KEYCHAIN_SERVICE, "smtp_user")
+        if keyring_val:
+            return keyring_val
+        cfg = NetCheckConfig.load()
+        return cfg.get("smtp", {}).get("user", "")
+
+    @staticmethod
+    def get_smtp_to() -> str:
+        """
+        Return the SMTP recipient email address.
+
+        Priority:
+          1. NETCHECK_SMTP_TO environment variable
+          2. OS keyring (stored via ``netcheck config set-password smtp_to``)
+          3. Value in config.yaml
+        """
+        env_val = os.environ.get("NETCHECK_SMTP_TO", "")
+        if env_val:
+            return env_val
+        keyring_val = _keyring_get(_KEYCHAIN_SERVICE, "smtp_to")
+        if keyring_val:
+            return keyring_val
+        cfg = NetCheckConfig.load()
+        return cfg.get("smtp", {}).get("to", "")
+
+    @staticmethod
+    def purge() -> None:
+        """Permanently delete configuration file and all keyring secrets."""
+        ans = input("Warning: This will permanently delete the config file and purge all stored secrets from the OS keyring. Continue? [y/N]: ").strip().lower()
+        if ans != "y":
+            print("Aborted.")
+            return
+
+        # 1. Clear keyring secrets
+        services = ["email", "smtp_user", "smtp_to", "slack", "webhook"]
+        for svc in services:
+            try:
+                _keyring_delete(_KEYCHAIN_SERVICE, svc)
+            except Exception:
+                pass
+        print("✅ Cleared all NetCheck secrets from OS keyring.")
+
+        # 2. Delete configuration file
+        config_path = NetCheckConfig.path()
+        if config_path.exists():
+            try:
+                config_path.unlink()
+                print(f"✅ Deleted configuration file at: {config_path}")
+            except Exception as exc:
+                print(f"❌ Failed to delete configuration file: {exc}", file=sys.stderr)
+        else:
+            print("Configuration file already removed.")
 
 
 # ---------------------------------------------------------------------------

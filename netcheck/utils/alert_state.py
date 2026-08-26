@@ -44,7 +44,9 @@ class TargetState:
     current: str = "UNKNOWN"  # UNKNOWN / UP / DOWN
     consecutive_up: int = 0
     consecutive_down: int = 0
-    last_alert_time: Optional[datetime] = None
+    last_alert_time: Optional[datetime] = None        # legacy – kept for compat
+    last_down_alert_time: Optional[datetime] = None   # cooldown for DOWN events
+    last_up_alert_time: Optional[datetime] = None     # cooldown for UP events
     last_error: Optional[str] = None
     first_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_check_time: Optional[datetime] = None
@@ -87,12 +89,29 @@ class AlertStateManager:
         target: str,
         success: bool,
         error: Optional[str] = None,
+        alert_on: str = "any",
     ) -> Optional[AlertEvent]:
         """
         Record a check result for *target*.
 
-        Returns an AlertEvent if the state changed AND the cooldown has
-        elapsed, otherwise returns None.
+        Parameters
+        ----------
+        target:
+            Identifier string (e.g. "host:port").
+        success:
+            Whether the check passed.
+        error:
+            Optional error message on failure.
+        alert_on:
+            When to emit AlertEvents:
+
+            * ``"any"``  (default) – fire on every state transition
+              (DOWN and UP / recovery).
+            * ``"down"`` – fire only when transitioning to DOWN.
+            * ``"up"``   – fire only when transitioning to UP (recovery).
+
+        Returns an AlertEvent if a state transition occurred AND the
+        per-direction cooldown has elapsed, otherwise returns None.
         """
         now = datetime.now(timezone.utc)
         state = self._states.setdefault(target, TargetState())
@@ -121,15 +140,32 @@ class AlertStateManager:
         if desired == state.current:
             return None  # no transition
 
+        # ── Per-direction cooldown check ───────────────────────────────────
+        # We track UP and DOWN cooldowns SEPARATELY so that a DOWN→UP→DOWN
+        # sequence always fires all three events, not just the first one.
+        if desired == "DOWN":
+            last_t = state.last_down_alert_time
+        else:  # desired == "UP"
+            last_t = state.last_up_alert_time
 
-
-        # Check cooldown
-        if state.last_alert_time is not None:
-            elapsed = (now - state.last_alert_time).total_seconds()
+        if last_t is not None:
+            elapsed = (now - last_t).total_seconds()
             if elapsed < self.cooldown_seconds:
-                return None  # in cooldown — suppress
+                return None  # in cooldown for this direction — suppress
 
-        # State transition!
+        # ── alert_on filter ────────────────────────────────────────────────
+        if alert_on == "down" and desired != "DOWN":
+            # Transition happened but user only wants DOWN alerts — record
+            # state change silently and reset the UP cooldown clock.
+            state.current = desired
+            state.last_up_alert_time = now
+            return None
+        if alert_on == "up" and desired != "UP":
+            state.current = desired
+            state.last_down_alert_time = now
+            return None
+
+        # ── Emit event ─────────────────────────────────────────────────────
         event = AlertEvent(
             target=target,
             old_state=state.current,
@@ -141,7 +177,15 @@ class AlertStateManager:
             last_error=state.last_error if desired == "DOWN" else None,
         )
         state.current = desired
+
+        # Update the correct directional cooldown clock
+        if desired == "DOWN":
+            state.last_down_alert_time = now
+        else:
+            state.last_up_alert_time = now
+        # Keep legacy field in sync
         state.last_alert_time = now
+
         return event
 
     def get_state(self, target: str) -> Optional[str]:
