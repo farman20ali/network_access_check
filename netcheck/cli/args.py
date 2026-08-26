@@ -47,6 +47,10 @@ def make_base_parser(
                         help="Watch mode refresh interval in seconds (default: %(default)s)")
     parser.add_argument("--no-color", action="store_true", default=env_no_color,
                         help="Disable ANSI color output")
+    parser.add_argument("--alert", default="",
+                        help="Comma-separated alert channels (e.g. email,slack,webhook,desktop)")
+    parser.add_argument("--alert-cooldown", type=float, default=300.0,
+                        help="Cooldown between alerts in seconds (default: %(default)s)")
     return parser
 
 
@@ -82,5 +86,7 @@ def make_legacy_parser(
     parser.add_argument("--no-color", action="store_true", default=env_no_color)
     parser.add_argument("--show", default="all",
                         choices=["all", "success", "fail"])
+    parser.add_argument("--alert", default="")
+    parser.add_argument("--alert-cooldown", type=float, default=300.0)
     parser.add_argument("input_file", nargs="?")
     return parser

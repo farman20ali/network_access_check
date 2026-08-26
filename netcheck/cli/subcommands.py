@@ -24,6 +24,70 @@ from netcheck.utils.formatters import format_text, format_json, format_csv, form
 from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+_alert_manager = None
+_metrics_registry = None
+
+def _get_alert_manager(flap_threshold: int = 2, cooldown: float = 300.0):
+    global _alert_manager
+    if _alert_manager is None:
+        from netcheck.utils.alert_state import AlertStateManager
+        _alert_manager = AlertStateManager(flap_threshold=flap_threshold, cooldown_seconds=cooldown)
+    return _alert_manager
+
+def _record_results_and_check_alerts(results: List[dict], check_type: str, args) -> None:
+    global _metrics_registry
+    if _metrics_registry is not None:
+        for r in results:
+            target = r.get("target") or "unknown"
+            success = r.get("success", False)
+            latency = r.get("latency_ms")
+            _metrics_registry.record(target, check_type, success, latency)
+
+    alert_channels_str = getattr(args, "alert", "")
+    if not alert_channels_str:
+        try:
+            from netcheck.utils.config import NetCheckConfig
+            cfg = NetCheckConfig.load()
+            enabled = []
+            alerts_section = cfg.get("alerts", {}) or cfg
+            for ch in ["email", "slack", "webhook", "desktop"]:
+                if alerts_section.get(ch, {}).get("enabled"):
+                    enabled.append(ch)
+            if enabled:
+                alert_channels_str = ",".join(enabled)
+        except Exception:
+            pass
+
+    if alert_channels_str:
+        channels = [c.strip() for c in alert_channels_str.split(",") if c.strip()]
+        if channels:
+            try:
+                from netcheck.utils.config import NetCheckConfig
+                from netcheck.utils.alerting import AlertDispatcher
+                
+                cfg = NetCheckConfig.load()
+                cooldown = getattr(args, "alert_cooldown", 300.0)
+                
+                alerts_section = cfg.get("alerts", {}) or cfg
+                flap_threshold = alerts_section.get("flap_threshold", 2)
+                if not isinstance(flap_threshold, int):
+                    flap_threshold = 2
+                
+                manager = _get_alert_manager(flap_threshold, cooldown)
+                dispatcher = AlertDispatcher(cfg)
+                
+                for r in results:
+                    target = r.get("target") or "unknown"
+                    success = r.get("success", False)
+                    error_msg = r.get("error")
+                    
+                    event = manager.update(target, success, error_msg)
+                    if event:
+                        dispatcher.dispatch(event)
+            except Exception as exc:
+                print(f"[netcheck] Alert dispatch error: {exc}", file=sys.stderr)
+
+
 
 # ---------------------------------------------------------------------------
 # Output helper
@@ -141,6 +205,7 @@ def _run_tcp(args, env_jobs: int) -> bool:
         except Exception as exc:
             print(f"Error saving results: {exc}", file=sys.stderr)
 
+    _record_results_and_check_alerts(results, "tcp", args)
     return all(r["success"] for r in results)
 
 
@@ -150,6 +215,7 @@ def _run_dns(args) -> bool:
     res = run_check_with_retry(dns_lookup, (args.host, args.timeout),
                                retries=args.retry, delay=args.retry_delay)
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "dns", args)
     return res["success"]
 
 
@@ -174,6 +240,7 @@ def _run_http(args) -> bool:
         delay=args.retry_delay,
     )
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "http", args)
     return res["success"]
 
 
@@ -183,6 +250,7 @@ def _run_ssl(args) -> bool:
     res = run_check_with_retry(check_ssl_certificate, (args.host, args.port, args.timeout),
                                retries=args.retry, delay=args.retry_delay)
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "ssl", args)
     return res["success"]
 
 
@@ -192,6 +260,7 @@ def _run_ping(args) -> bool:
     res = run_check_with_retry(ping_host, (args.host, args.count, args.timeout),
                                retries=args.retry, delay=args.retry_delay)
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "ping", args)
     return res["success"]
 
 
@@ -200,6 +269,7 @@ def _run_interfaces(args) -> bool:
     fmt = "json" if args.json else args.format
     res = get_network_interfaces(all_interfaces=args.all, include_public=args.public)
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "interfaces", args)
     return res["success"]
 
 
@@ -209,6 +279,7 @@ def _run_ports(args) -> bool:
     from netcheck.modules.interfaces import check_listening_ports
     res = check_listening_ports()
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "ports", args)
     return res["success"]
 
 
@@ -218,6 +289,7 @@ def _run_traceroute(args) -> bool:
     from netcheck.modules.traceroute import traceroute as run_traceroute
     res = run_traceroute(args.host, max_hops=args.max_hops, timeout=args.timeout)
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "traceroute", args)
     return res["success"]
 
 
@@ -239,6 +311,7 @@ def _run_scan(args) -> bool:
     res = scan_ports(args.host, ports=port_list, timeout=args.timeout,
                      max_workers=getattr(args, "jobs", 20))
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "scan", args)
     return res["success"]
 
 
@@ -248,7 +321,65 @@ def _run_whois(args) -> bool:
     from netcheck.modules.whois import lookup_registration
     res = lookup_registration(args.target)
     print(_fmt_output([res], fmt, verbose=args.verbose, use_color=use_color))
+    _record_results_and_check_alerts([res], "whois", args)
     return res["success"]
+
+
+def _build_serve_parser(base: argparse.ArgumentParser) -> None:
+    base.add_argument("hosts_file")
+    base.add_argument("--metrics", action="store_true", help="Enable Prometheus metrics endpoint")
+    base.add_argument("-p", "--port", type=int, default=9090, help="Port for metrics (default: 9090)")
+
+
+def _run_serve(args, env_jobs: int) -> bool:
+    import time
+    from netcheck.cli.batch import parse_batch_file, parse_csv_file
+    from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
+    from netcheck.cli.executor import execute_concurrent_checks
+    
+    filepath = args.hosts_file
+    if filepath.lower().endswith(".csv"):
+        targets = parse_csv_file(filepath)
+    else:
+        targets = parse_batch_file(filepath)
+        
+    expanded: List[Tuple[str, int]] = []
+    for host, p_str in targets:
+        ports = expand_port_range(p_str)
+        hosts = expand_ip_range(host)
+        for h in hosts:
+            for p in ports:
+                expanded.append((h, p))
+                
+    if not expanded:
+        print("Error: No valid targets found to serve", file=sys.stderr)
+        return False
+        
+    server = None
+    if args.metrics:
+        from netcheck.utils.prometheus import MetricsRegistry, MetricsServer
+        global _metrics_registry
+        _metrics_registry = MetricsRegistry()
+        server = MetricsServer(_metrics_registry, host="0.0.0.0", port=args.port)
+        server.start()
+        print(f"📡 Prometheus metrics exporter listening on {server.url()}")
+        
+    print(f"Monitoring {len(expanded)} targets in serve loop every {args.interval}s...")
+    try:
+        while True:
+            results = execute_concurrent_checks(
+                expanded, args.timeout, getattr(args, "jobs", env_jobs),
+                args.retry, args.retry_delay, verbose=args.verbose
+            )
+            _record_results_and_check_alerts(results, "tcp", args)
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print("\nStopping serve mode...")
+    finally:
+        if server:
+            server.stop()
+    return True
+
 
 
 def _run_mcp(sub_args: List[str]) -> None:
@@ -268,13 +399,45 @@ def _run_mcp(sub_args: List[str]) -> None:
         sys.exit(EXIT_BAD_ARGS)
 
 
+def _run_config(sub_args: List[str]) -> None:
+    """Handle: netcheck config [init|edit|show|path|set-password|clear-password]"""
+    from netcheck.utils.config import NetCheckConfig
+
+    action = sub_args[0] if sub_args else "show"
+
+    if action == "init":
+        NetCheckConfig.init_wizard()
+    elif action == "edit":
+        import os
+        import subprocess
+        editor = os.environ.get("EDITOR", "notepad" if sys.platform == "win32" else "nano")
+        subprocess.run([editor, str(NetCheckConfig.path())])
+    elif action == "show":
+        print(NetCheckConfig.show())
+    elif action == "path":
+        print(NetCheckConfig.path())
+    elif action == "set-password":
+        service = sub_args[1] if len(sub_args) > 1 else "email"
+        NetCheckConfig.set_password(service)
+    elif action == "clear-password":
+        service = sub_args[1] if len(sub_args) > 1 else "email"
+        NetCheckConfig.clear_password(service)
+    else:
+        print(f"Unknown config subcommand: {action}", file=sys.stderr)
+        print(
+            "Usage: netcheck config [init|edit|show|path|set-password <svc>|clear-password <svc>]",
+            file=sys.stderr,
+        )
+        sys.exit(EXIT_BAD_ARGS)
+
+
 # ---------------------------------------------------------------------------
 # Main dispatcher
 # ---------------------------------------------------------------------------
 
 SUBCOMMANDS = frozenset({
     "tcp", "dns", "http", "ssl", "ping",
-    "interfaces", "ports", "traceroute", "scan", "whois", "mcp",
+    "interfaces", "ports", "traceroute", "scan", "whois", "mcp", "config", "serve",
 })
 
 
@@ -289,9 +452,12 @@ def handle_subcommands(
     Parse sub_args for the given subcommand, execute once or in watch loop.
     Calls sys.exit() with the correct exit code.
     """
-    # MCP doesn't follow the watch/format pattern
+    # MCP and config don't follow the watch/format pattern
     if subcommand == "mcp":
         _run_mcp(sub_args)
+        return
+    if subcommand == "config":
+        _run_config(sub_args)
         return
 
     base = make_base_parser(
@@ -322,6 +488,8 @@ def handle_subcommands(
         _build_scan_parser(base, env_jobs)
     elif subcommand == "whois":
         _build_whois_parser(base)
+    elif subcommand == "serve":
+        _build_serve_parser(base)
     else:
         base.print_help()
         sys.exit(EXIT_BAD_ARGS)
@@ -340,6 +508,7 @@ def handle_subcommands(
         "traceroute": lambda: _run_traceroute(args),
         "scan":       lambda: _run_scan(args),
         "whois":      lambda: _run_whois(args),
+        "serve":      lambda: _run_serve(args, env_jobs),
     }
     execute_fn = _dispatch[subcommand]
 

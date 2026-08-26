@@ -73,6 +73,10 @@ SUBCOMMANDS (v{__version__}):
     mcp                         Start MCP server (stdio transport)
     mcp install                 Print Claude Desktop config snippet
     mcp status                  Test MCP server health
+    config [action]             Manage configuration (init, show, path, set-password, clear-password)
+    serve <hosts_file>          Continuous check loop exposing Prometheus metrics
+
+
 
 WATCH MODE:
     Any subcommand can be looped with:

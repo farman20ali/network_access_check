@@ -310,6 +310,66 @@ echo 'autoload -U compinit && compinit' >> ~/.zshrc
 
 The installer script (`packaging/linux/install.sh`) does all of this automatically.
 
+## ⚙️ Alerting, Config & Prometheus (`serve`)
+
+NetCheck features a robust, zero-dependency configuration, alerting, and Prometheus metrics engine.
+
+### 1. Configuration Manager
+
+Configure SMTP, Slack, Webhooks, and default check timeouts safely:
+```bash
+netcheck config init          # Run interactive wizard to generate config
+netcheck config show          # Print current configuration (sensitive fields masked)
+netcheck config path          # Print path to config.yaml file
+netcheck config edit          # Open config.yaml in your local $EDITOR
+```
+
+**Credential Safety (System Keychain):**
+Passwords and tokens should never be stored in plain text. Securely store your SMTP password in the OS credential manager (Keychain on macOS, Credential Manager on Windows, GNOME Keyring/KWallet on Linux):
+```bash
+netcheck config set-password email      # Secures SMTP password in OS keychain
+netcheck config clear-password email    # Removes password from OS keychain
+```
+
+### 2. Alerting Engine
+
+Trigger alerts on state **changes** (UP ⇄ DOWN transition) during watch or serve loops. This prevents alert storms from repeated failures.
+
+Supported channels:
+- **SMTP Email** (using secure STARTTLS/SSL and Keychain password lookup)
+- **Slack** (via incoming webhook URL)
+- **Generic Webhook** (JSON POST with token authentication and template substitution)
+- **Desktop Notifications** (native pop-up notifications)
+
+**Usage Examples:**
+```bash
+# Alert via email and Slack on TCP connectivity changes
+netcheck tcp api.example.com 443 -w --alert email,slack
+
+# Alert via desktop notifications on DNS changes
+netcheck dns google.com -w --alert desktop
+
+# Trigger alerts with a custom 10-minute cooldown
+netcheck tcp host.com 443 -w --alert slack --alert-cooldown 600
+```
+
+### 3. Prometheus Metrics Exporter (`serve` mode)
+
+Run `netcheck` as a background daemon monitoring multiple targets and serving `/metrics` in the Prometheus text exposition format.
+
+```bash
+# Monitor hosts from a file and serve metrics on port 9090
+netcheck serve --metrics --port 9090 hosts.txt
+```
+
+Exposed Metrics:
+- `netcheck_scrape_count` (Counter)
+- `netcheck_check_total{target, check_type}` (Counter)
+- `netcheck_check_failures_total{target, check_type}` (Counter)
+- `netcheck_latency_seconds{target, check_type}` (Gauge)
+- `netcheck_up{target}` (Gauge, 1 = UP, 0 = DOWN)
+- `netcheck_uptime_ratio{target, check_type}` (Gauge, 0.0 - 1.0 ratio)
+
 ---
 
 ## ⚙️ CI/CD Integration
