@@ -455,3 +455,52 @@ jobs:
         if: env.WINGET_GITHUB_TOKEN == ''
         shell: pwsh
         run: Write-Host "WINGET_GITHUB_TOKEN not set - skipping Winget update."
+
+  build-vscode:
+    name: Build VSCode Extension (.vsix)
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: cd packaging/vscode && npm install
+
+      - name: Compile TypeScript
+        run: cd packaging/vscode && npm run compile
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Package extension
+        run: cd packaging/vscode && vsce package --no-dependencies
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension
+          path: packaging/vscode/*.vsix
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: packaging/vscode/*.vsix
+
+      - name: Publish to VS Code Marketplace
+        if: startsWith(github.ref, 'refs/tags/') && env.VSCODE_PAT != ''
+        env:
+          VSCODE_PAT: ${{ secrets.VSCODE_PAT }}
+        run: cd packaging/vscode && vsce publish --pat $VSCODE_PAT
+
+      - name: Skip Marketplace publish
+        if: env.VSCODE_PAT == ''
+        env:
+          VSCODE_PAT: ${{ secrets.VSCODE_PAT }}
+        run: echo "VSCODE_PAT not set - skipping Marketplace publish."
