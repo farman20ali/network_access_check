@@ -41,16 +41,18 @@ def retry_call(
     
     current_delay = delay
     last_exception = None
-    
-    for attempt in range(1, retries + 1):
+    attempts = max(1, retries)
+    for attempt in range(1, attempts + 1):
         try:
             return func(*args, **kwargs)
         except exceptions as e:
             last_exception = e
-            if attempt < retries:
+            if attempt < attempts:
                 time.sleep(current_delay)
                 current_delay *= backoff
             
     if last_exception:
         raise last_exception
     raise RuntimeError("Retry loop exited unexpectedly")
+
+
