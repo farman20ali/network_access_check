@@ -539,13 +539,17 @@ def _fmt_bulk(results: List[Dict[str, Any]], c: dict) -> str:
 
         if success:
             successes += 1
-            status_str = f"{c['green']}SUCCESS{c['reset']}"
+            status_str = f"{c['green']}✅ SUCCESS{c['reset']}"
         else:
             failures += 1
-            status_str = f"{c['red']}FAILED{c['reset']}"
+            status_str = f"{c['red']}❌ FAILED{c['reset']}"
 
         if status == "REDIRECT":
-            status_str = f"{c['yellow']}REDIRECT{c['reset']}"
+            status_str = f"{c['yellow']}↪  REDIRECT{c['reset']}"
+        elif status in ("OPEN_OR_FILTERED",):
+            status_str = f"{c['green']}✅ OPEN/FLTRD{c['reset']}"
+            if not success:
+                status_str = f"{c['red']}❌ CLOSED{c['reset']}"
 
         meta = r.get("metadata", {})
         if "status_code" in meta:
