@@ -5,18 +5,17 @@ Handles CSV files, plain-text host:port files, and stdin batch mode.
 All functions are pure (no sys.exit) except run_batch_targets which
 calls sys.exit at completion to set the correct exit code.
 """
-import sys
 import csv
 import io
+import sys
 from datetime import datetime
 from typing import List, Tuple
 
+from netcheck.cli.executor import execute_concurrent_checks
+from netcheck.cli.exitcodes import EXIT_FAIL, EXIT_OK
+from netcheck.utils.formatters import format_csv, format_json, format_text, format_xml
 from netcheck.utils.normalize import parse_line_to_raw_host_port
 from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
-from netcheck.utils.formatters import format_text, format_json, format_csv, format_xml
-from netcheck.cli.executor import execute_concurrent_checks
-from netcheck.cli.exitcodes import EXIT_OK, EXIT_FAIL, EXIT_ERROR
-
 
 # ---------------------------------------------------------------------------
 # Parsing helpers

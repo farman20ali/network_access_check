@@ -9,12 +9,12 @@ continue to work without change.
 DO NOT add new logic here.
 """
 from netcheck.utils.formatters import (  # noqa: F401
-    format_json,
+    _detect_result_type,
     format_csv,
-    format_xml,
+    format_json,
     format_text,
+    format_xml,
     get_colors,
     pad_right,
     strip_ansi,
-    _detect_result_type,
 )

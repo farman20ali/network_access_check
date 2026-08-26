@@ -6,11 +6,11 @@ No printing, no sys.exit — all I/O lives in the caller (main.py / batch.py).
 """
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, Any, List, Tuple, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from netcheck.modules.tcp import check_tcp_connect
-from netcheck.utils.retry import retry_call
 from netcheck.utils.formatters import get_colors
+from netcheck.utils.retry import retry_call
 
 
 def run_check_with_retry(

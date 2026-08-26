@@ -38,7 +38,6 @@ from typing import Any, Optional
 
 from netcheck.utils.alert_state import AlertEvent
 
-
 # ---------------------------------------------------------------------------
 # Alert message formatting
 # ---------------------------------------------------------------------------
@@ -50,8 +49,8 @@ def _format_subject(event: AlertEvent) -> str:
 
 def _format_body_plain(event: AlertEvent) -> str:
     lines = [
-        f"NetCheck Alert",
-        f"=============",
+        "NetCheck Alert",
+        "=============",
         f"Target  : {event.target}",
         f"Status  : {event.old_state} → {event.new_state}",
         f"Time    : {event.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}",

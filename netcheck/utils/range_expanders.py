@@ -1,6 +1,7 @@
 import ipaddress
 from typing import List
 
+
 def expand_ip_range(ip_str: str) -> List[str]:
     """
     Expands an IP string representing a single IP, a CIDR block (e.g. 192.168.1.0/24),
@@ -9,7 +10,7 @@ def expand_ip_range(ip_str: str) -> List[str]:
     ip_str = ip_str.strip()
     if not ip_str:
         return []
-        
+
     if "/" in ip_str:
         try:
             network = ipaddress.ip_network(ip_str, strict=False)
@@ -20,13 +21,13 @@ def expand_ip_range(ip_str: str) -> List[str]:
             return hosts
         except Exception:
             return [ip_str]
-            
+
     elif "-" in ip_str:
         try:
             parts = ip_str.split("-")
             start_ip = parts[0].strip()
             end_val = parts[1].strip()
-            
+
             # If the second part is just a single octet (e.g. 192.168.1.1-50)
             if "." not in end_val:
                 base_parts = start_ip.split(".")
@@ -34,10 +35,10 @@ def expand_ip_range(ip_str: str) -> List[str]:
                 end_ip = ".".join(base_parts)
             else:
                 end_ip = end_val
-                
+
             start = ipaddress.ip_address(start_ip)
             end = ipaddress.ip_address(end_ip)
-            
+
             ips = []
             curr = start
             while curr <= end:
@@ -78,7 +79,7 @@ def expand_port_range(port_str: str) -> List[int]:
                 ports.append(p_val)
         except ValueError:
             pass
-            
+
     # Remove duplicates and preserve order
     seen = set()
     return [p for p in ports if not (p in seen or seen.add(p))]

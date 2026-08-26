@@ -26,7 +26,6 @@ import socket
 import time
 from typing import Any, Dict, Optional
 
-
 # Common service names for well-known UDP ports
 _UDP_SERVICES: Dict[int, str] = {
     53: "dns",

@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)](#)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-68%20passed-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-299%20passed-brightgreen.svg)](#)
 
 A premium, cross-platform, production-grade **Network Intelligence Engine & CLI** written in pure Python 3. Zero external dependencies. High-concurrency diagnostics, structured output (JSON/CSV/XML), watch/loop mode, shell completions, man page, and an integrated **Model Context Protocol (MCP) Server** for AI assistants.
 
@@ -14,7 +14,8 @@ A premium, cross-platform, production-grade **Network Intelligence Engine & CLI*
 
 - **Zero-Dependency Core** — Built entirely on the Python standard library. No `pip install` needed to run.
 - **Cross-Platform** — Native support for Linux, macOS, and Windows with consistent terminal output.
-- **9 Subcommands** — Modular `tcp`, `dns`, `http`, `ssl`, `ping`, `interfaces`, `traceroute`, `scan`, `whois`.
+- **11 Subcommands** — Modular `tcp`, `dns`, `http`, `ssl`, `ping`, `interfaces`, `traceroute`, `scan`, `whois`, `udp`, `mtr`.
+- **Built-in Presets** — Quick batch checks of cloud endpoints (`aws`, `gcp`, `azure`, `cloudflare`, `github`, etc.).
 - **Watch Mode** — Any subcommand loops with `--watch` and configurable `--interval`.
 - **Structured Output** — Every check returns `--format text|json|csv|xml`.
 - **No-Color Mode** — `--no-color` and `NO_COLOR` env var support for CI/CD pipelines.
@@ -93,6 +94,9 @@ python3 -m netcheck --help
 | `traceroute` | Hop-by-hop network path trace | `netcheck traceroute 8.8.8.8 -m 20` |
 | `scan` | Concurrent TCP port scanner with service names | `netcheck scan 192.168.1.1 --ports 1-1024` |
 | `whois` | RDAP/WHOIS domain or IP registration lookup | `netcheck whois google.com` |
+| `udp` | UDP stateless port checker (interprets ICMP unreachable as CLOSED) | `netcheck udp 8.8.8.8 53` |
+| `mtr` | MTR-style combined ping + traceroute latency trace | `netcheck mtr google.com` |
+| `preset` | Expand a preconfigured list of hosts to check | `netcheck preset aws` |
 
 ### Watch Mode
 
@@ -353,6 +357,31 @@ netcheck dns google.com -w --alert desktop
 netcheck tcp host.com 443 -w --alert slack --alert-cooldown 600
 ```
 
+#### 🧪 How to Test Alerts Locally
+1. Run the interactive config wizard and configure your alerting channels (e.g., Slack Webhook or Desktop):
+   ```bash
+   netcheck config init
+   ```
+2. In Terminal A, start watching a local port with alerts enabled:
+   ```bash
+   netcheck tcp localhost 9999 -w --alert slack,desktop --interval 2
+   ```
+   *(NetCheck initially records the baseline state silently.)*
+3. In Terminal B, simulate a service going **UP** by starting a quick local listener:
+   * **Linux/macOS:** `nc -lk 9999`
+   * **Windows (PowerShell):**
+     ```powershell
+     $listener = [System.Net.Sockets.TcpListener]9999; $listener.Start()
+     ```
+   NetCheck will register `localhost:9999` as **UP**.
+4. Simulate a service going **DOWN** by killing the listener in Terminal B (`Ctrl+C` or `$listener.Stop()`).
+   NetCheck will detect the state change and immediately trigger a **DOWN** alert to Slack and Desktop:
+   > ❌ **Alert: localhost:9999 is DOWN** (Connection refused)
+5. Restart the listener in Terminal B. NetCheck will detect the recovery and emit a **RECOVERED** alert:
+   > ✅ **Alert: localhost:9999 is back UP**
+
+---
+
 ### 3. Prometheus Metrics Exporter (`serve` mode)
 
 Run `netcheck` as a background daemon monitoring multiple targets and serving `/metrics` in the Prometheus text exposition format.
@@ -369,6 +398,44 @@ Exposed Metrics:
 - `netcheck_latency_seconds{target, check_type}` (Gauge)
 - `netcheck_up{target}` (Gauge, 1 = UP, 0 = DOWN)
 - `netcheck_uptime_ratio{target, check_type}` (Gauge, 0.0 - 1.0 ratio)
+
+#### 📡 How to Integrate with Prometheus
+1. Create a `targets.txt` file containing your endpoints:
+   ```text
+   google.com:443
+   github.com:443
+   127.0.0.1:80
+   ```
+2. Start the NetCheck daemon:
+   ```bash
+   netcheck serve --metrics --port 9090 targets.txt --interval 10
+   ```
+3. Verify that the metrics endpoint is outputting valid text format:
+   ```bash
+   curl http://localhost:9090/metrics
+   ```
+4. Add the job to your `prometheus.yml` configuration:
+   ```yaml
+   scrape_configs:
+     - job_name: 'netcheck'
+       scrape_interval: 10s
+       static_configs:
+         - targets: ['localhost:9090']
+   ```
+5. You can now build Grafana dashboards or Alertmanager rules based on the `netcheck_up` metric:
+   ```yaml
+   # Alertmanager rule example
+   groups:
+     - name: netcheck_alerts
+       rules:
+         - alert: EndpointDown
+           expr: netcheck_up == 0
+           for: 1m
+           labels:
+             severity: page
+           annotations:
+             summary: "Endpoint {{ $labels.target }} is offline"
+   ```
 
 ---
 

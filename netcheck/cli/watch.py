@@ -5,9 +5,9 @@ Decoupled from all CLI state — accepts any callable that executes one
 check cycle and returns a bool (True = all passed).
 """
 import os
+import platform
 import sys
 import time
-import platform
 from datetime import datetime
 from typing import Callable
 

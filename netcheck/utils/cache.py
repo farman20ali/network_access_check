@@ -1,6 +1,7 @@
-import time
 import threading
-from typing import Dict, Tuple, Any, Optional
+import time
+from typing import Any, Dict, Optional, Tuple
+
 
 class Cache:
     """Thread-safe cache with time-to-live (TTL) support and size limit."""
@@ -29,12 +30,12 @@ class Cache:
             expired_keys = [k for k, (_, exp) in self._cache.items() if now > exp]
             for k in expired_keys:
                 del self._cache[k]
-                
+
             # Evict if full
             if len(self._cache) >= self._max_size and key not in self._cache:
                 oldest_key = next(iter(self._cache))
                 del self._cache[oldest_key]
-                
+
             self._cache[key] = (value, expiry)
 
     def clear(self) -> None:

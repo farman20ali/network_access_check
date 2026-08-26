@@ -5,24 +5,22 @@ Each subcommand (tcp, dns, http, ssl, ping, interfaces, ports,
 traceroute, scan, whois, mcp) is handled by a dedicated private
 helper, keeping routing logic clean.
 """
-import sys
 import argparse
-from typing import List
+import sys
+from typing import List, Tuple
 
 from netcheck.cli.args import make_base_parser
 from netcheck.cli.executor import run_check_with_retry
-from netcheck.cli.exitcodes import EXIT_OK, EXIT_FAIL, EXIT_BAD_ARGS, EXIT_ERROR
-
-# Module-level imports for the check functions used most frequently
-from netcheck.modules.tcp import check_tcp_connect
+from netcheck.cli.exitcodes import EXIT_BAD_ARGS, EXIT_ERROR, EXIT_FAIL, EXIT_OK
 from netcheck.modules.dns import dns_lookup
 from netcheck.modules.http import check_http_status
-from netcheck.modules.ssl import check_ssl_certificate
-from netcheck.modules.ping import ping_host
 from netcheck.modules.interfaces import get_network_interfaces
-from netcheck.utils.formatters import format_text, format_json, format_csv, format_xml
+from netcheck.modules.ping import ping_host
+from netcheck.modules.ssl import check_ssl_certificate
+
+# Module-level imports for the check functions used most frequently
+from netcheck.utils.formatters import format_csv, format_json, format_text, format_xml
 from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 _alert_manager = None
 _metrics_registry = None
@@ -62,25 +60,25 @@ def _record_results_and_check_alerts(results: List[dict], check_type: str, args)
         channels = [c.strip() for c in alert_channels_str.split(",") if c.strip()]
         if channels:
             try:
-                from netcheck.utils.config import NetCheckConfig
                 from netcheck.utils.alerting import AlertDispatcher
-                
+                from netcheck.utils.config import NetCheckConfig
+
                 cfg = NetCheckConfig.load()
                 cooldown = getattr(args, "alert_cooldown", 300.0)
-                
+
                 alerts_section = cfg.get("alerts", {}) or cfg
                 flap_threshold = alerts_section.get("flap_threshold", 2)
                 if not isinstance(flap_threshold, int):
                     flap_threshold = 2
-                
+
                 manager = _get_alert_manager(flap_threshold, cooldown)
                 dispatcher = AlertDispatcher(cfg)
-                
+
                 for r in results:
                     target = r.get("target") or "unknown"
                     success = r.get("success", False)
                     error_msg = r.get("error")
-                    
+
                     event = manager.update(target, success, error_msg)
                     if event:
                         dispatcher.dispatch(event)
@@ -164,7 +162,6 @@ def _build_whois_parser(base: argparse.ArgumentParser) -> None:
 
 def _run_tcp(args, env_jobs: int) -> bool:
     """Run TCP check with optional range expansion and output filtering."""
-    from netcheck.cli.batch import _format_output
     hosts = expand_ip_range(args.host)
     ports = expand_port_range(args.port)
     targets = [(h, p) for h in hosts for p in ports]
@@ -333,16 +330,17 @@ def _build_serve_parser(base: argparse.ArgumentParser) -> None:
 
 def _run_serve(args, env_jobs: int) -> bool:
     import time
+
     from netcheck.cli.batch import parse_batch_file, parse_csv_file
-    from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
     from netcheck.cli.executor import execute_concurrent_checks
-    
+    from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
+
     filepath = args.hosts_file
     if filepath.lower().endswith(".csv"):
         targets = parse_csv_file(filepath)
     else:
         targets = parse_batch_file(filepath)
-        
+
     expanded: List[Tuple[str, int]] = []
     for host, p_str in targets:
         ports = expand_port_range(p_str)
@@ -350,11 +348,11 @@ def _run_serve(args, env_jobs: int) -> bool:
         for h in hosts:
             for p in ports:
                 expanded.append((h, p))
-                
+
     if not expanded:
         print("Error: No valid targets found to serve", file=sys.stderr)
         return False
-        
+
     server = None
     if args.metrics:
         from netcheck.utils.prometheus import MetricsRegistry, MetricsServer
@@ -363,7 +361,7 @@ def _run_serve(args, env_jobs: int) -> bool:
         server = MetricsServer(_metrics_registry, host="0.0.0.0", port=args.port)
         server.start()
         print(f"📡 Prometheus metrics exporter listening on {server.url()}")
-        
+
     print(f"Monitoring {len(expanded)} targets in serve loop every {args.interval}s...")
     try:
         while True:

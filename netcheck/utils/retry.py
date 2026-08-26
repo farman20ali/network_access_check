@@ -1,6 +1,6 @@
-import time
 import functools
-from typing import Callable, TypeVar, Any, Tuple, Optional
+import time
+from typing import Any, Callable, Optional, Tuple, TypeVar
 
 T = TypeVar('T')
 
@@ -38,7 +38,7 @@ def retry_call(
     """Helper function to execute a callable with retries."""
     if kwargs is None:
         kwargs = {}
-    
+
     current_delay = delay
     last_exception = None
     attempts = max(1, retries)
@@ -50,7 +50,7 @@ def retry_call(
             if attempt < attempts:
                 time.sleep(current_delay)
                 current_delay *= backoff
-            
+
     if last_exception:
         raise last_exception
     raise RuntimeError("Retry loop exited unexpectedly")

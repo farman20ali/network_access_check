@@ -4,7 +4,7 @@ CSV formatter for all NetCheck check types.
 import csv
 import io
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from netcheck.utils.formatters.base import detect_result_type
 

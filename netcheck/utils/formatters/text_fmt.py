@@ -7,10 +7,9 @@ format_text() dispatches to these, then falls back to the bulk-tabular formatter
 import os
 import sys
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from netcheck.utils.formatters.base import detect_result_type, pad_right, get_colors
-
+from netcheck.utils.formatters.base import detect_result_type, get_colors, pad_right
 
 # ---------------------------------------------------------------------------
 # Per-type formatters
@@ -215,7 +214,6 @@ def _fmt_ssl(res: Dict[str, Any], c: dict, verbose: bool) -> str:
     target = res.get("target", "")
     success = res.get("success", False)
     error = res.get("error", "")
-    latency = res.get("latency_ms")
     lines = []
     lines.append(f"SSL/TLS Certificate Check for: {target}")
     lines.append("━" * 40)

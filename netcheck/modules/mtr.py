@@ -151,7 +151,7 @@ def _raw_mtr(
         raise
 
     hops: List[Dict[str, Any]] = []
-    reached = False
+
 
     for ttl in range(1, max_hops + 1):
         latencies: List[float] = []
@@ -206,7 +206,6 @@ def _raw_mtr(
         hops.append(hop)
 
         if hop_ip == dest_ip:
-            reached = True
             break
 
     return hops

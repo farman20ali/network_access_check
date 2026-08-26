@@ -10,13 +10,12 @@ Responsibilities (only routing — no business logic):
 
 All heavy logic lives in: subcommands.py, batch.py, executor.py
 """
-import sys
 import os
-from typing import List, Optional
+import sys
+from typing import Optional
 
-from netcheck.cli.exitcodes import EXIT_OK, EXIT_FAIL, EXIT_BAD_ARGS, EXIT_ERROR
+from netcheck.cli.exitcodes import EXIT_BAD_ARGS, EXIT_FAIL, EXIT_OK
 from netcheck.cli.subcommands import SUBCOMMANDS, handle_subcommands
-
 
 # ---------------------------------------------------------------------------
 # Help text
@@ -114,9 +113,9 @@ def run_quick_test(
     exit_on_complete: bool = True,
     show_filter: str = "all",
 ) -> bool:
-    from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
     from netcheck.cli.executor import execute_concurrent_checks
-    from netcheck.utils.formatters import format_text, format_json, format_csv, format_xml
+    from netcheck.utils.formatters import format_csv, format_json, format_text, format_xml
+    from netcheck.utils.range_expanders import expand_ip_range, expand_port_range
 
     def _fmt(results, use_color=None) -> str:
         if fmt == "json":
@@ -274,15 +273,16 @@ def main() -> None:
     verbose = args.verbose
 
     # Lazy imports for modules used only in legacy mode
-    from netcheck.modules.dns import dns_lookup
-    from netcheck.modules.ping import ping_host
-    from netcheck.modules.http import check_http_status
-    from netcheck.modules.ssl import check_ssl_certificate
-    from netcheck.modules.interfaces import get_network_interfaces
-    from netcheck.cli.executor import run_check_with_retry
-    from netcheck.utils.formatters import format_text, format_json, format_csv, format_xml
-    from netcheck.utils.range_expanders import expand_ip_range
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from netcheck.cli.executor import run_check_with_retry
+    from netcheck.modules.dns import dns_lookup
+    from netcheck.modules.http import check_http_status
+    from netcheck.modules.interfaces import get_network_interfaces
+    from netcheck.modules.ping import ping_host
+    from netcheck.modules.ssl import check_ssl_certificate
+    from netcheck.utils.formatters import format_csv, format_json, format_text, format_xml
+    from netcheck.utils.range_expanders import expand_ip_range
 
     def _fmt(results, use_color=None) -> str:
         if fmt == "json":
@@ -360,7 +360,10 @@ def main() -> None:
 
     # Batch modes
     from netcheck.cli.batch import (
-        parse_csv_file, parse_csv_content, parse_batch_file, parse_batch_content,
+        parse_batch_content,
+        parse_batch_file,
+        parse_csv_content,
+        parse_csv_file,
         run_batch_targets,
     )
 

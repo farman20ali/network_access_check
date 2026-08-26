@@ -5,7 +5,7 @@ Utilities: ANSI strip/pad, color map, result-type detection.
 """
 import re
 import sys
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 
 def strip_ansi(text: str) -> str:

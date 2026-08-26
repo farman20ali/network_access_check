@@ -3,12 +3,10 @@ MCP CLI Commands for NetCheck.
 
 Implements `netcheck mcp install` and `netcheck mcp status`.
 """
-import sys
-import os
 import json
+import os
 import subprocess
-import shutil
-from typing import Dict, Any
+import sys
 
 
 def get_claude_config_path() -> str:
@@ -29,7 +27,6 @@ def cmd_mcp_install() -> None:
     """
     # Attempt to locate executable path or python package command
     python_exe = sys.executable or "python"
-    package_cmd = [python_exe, "-m", "netcheck", "mcp"]
 
     snippet = {
         "mcpServers": {
@@ -149,7 +146,7 @@ def cmd_mcp_status() -> None:
     server_version = server_info.get("version")
 
     if server_name == "netcheck":
-        print(f"✅ Success: NetCheck MCP Server is HEALTHY.")
+        print("✅ Success: NetCheck MCP Server is HEALTHY.")
         print(f"   Name:    {server_name}")
         print(f"   Version: {server_version}")
     else:

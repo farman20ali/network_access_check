@@ -35,10 +35,8 @@ Usage::
 from __future__ import annotations
 
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Dict, Optional, Tuple
-
 
 # ---------------------------------------------------------------------------
 # Metric storage
