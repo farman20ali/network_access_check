@@ -16,6 +16,7 @@ import { registerRunPing } from "./commands/runPing";
 import { registerRunTraceroute } from "./commands/runTraceroute";
 import { registerRunScan } from "./commands/runScan";
 import { registerRunWhois } from "./commands/runWhois";
+import { ensureNetcheckInstalled } from "./installer";
 
 let statusBarItem: vscode.StatusBarItem | undefined;
 
@@ -76,8 +77,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  // Auto-start MCP server in background
-  startMcpSilently(client);
+  // Auto-install netcheckx if needed, then start MCP server in background
+  activateWithInstall(context, client);
 }
 
 // ── Deactivation ───────────────────────────────────────────────────────────
@@ -87,6 +88,21 @@ export function deactivate(): void {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+async function activateWithInstall(
+  context: vscode.ExtensionContext,
+  client: ReturnType<typeof getClient>
+): Promise<void> {
+  // Step 1: ensure netcheckx is installed at the required version
+  const ready = await ensureNetcheckInstalled(context);
+
+  // Step 2: start MCP server regardless (user may fix path manually)
+  await startMcpSilently(client);
+
+  if (ready) {
+    console.log("[NetCheck] Activated successfully.");
+  }
+}
 
 async function startMcpSilently(client: ReturnType<typeof getClient>): Promise<void> {
   try {
