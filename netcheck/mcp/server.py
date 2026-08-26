@@ -27,6 +27,7 @@ def start_mcp_server():
             req_id = request.get("id")
             
             if method == "initialize":
+                from netcheck import __version__
                 response = {
                     "jsonrpc": "2.0",
                     "id": req_id,
@@ -37,10 +38,11 @@ def start_mcp_server():
                         },
                         "serverInfo": {
                             "name": "netcheck",
-                            "version": "2.3.0"
+                            "version": __version__
                         }
                     }
                 }
+
             elif method == "notifications/initialized":
                 continue
             elif method == "tools/list":
