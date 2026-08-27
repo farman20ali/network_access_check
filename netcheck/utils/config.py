@@ -19,10 +19,13 @@ They are always retrieved from the OS keychain via keyring.
 
 from __future__ import annotations
 
+import abc
 import json
 import os
 import platform
+import shutil
 import stat
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -115,6 +118,21 @@ class NetCheckConfig:
         """Load config with env-var overrides merged on top."""
         import copy
 
+        # Load .netcheck.env into environment variables if it exists
+        env_file = NetCheckConfig.path().parent / ".netcheck.env"
+        if env_file.exists():
+            try:
+                for line in env_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, _, v = line.partition("=")
+                        os.environ.setdefault(k.strip(), v.strip())
+            except Exception as exc:
+                print(
+                    f"[netcheck] Warning: could not load .netcheck.env: {exc}",
+                    file=sys.stderr,
+                )
+
         cfg = copy.deepcopy(_DEFAULTS)
         config_path = NetCheckConfig.path()
 
@@ -164,6 +182,8 @@ class NetCheckConfig:
         output.append("=== Configuration File (yaml) ===")
         output.append(f"Path: {NetCheckConfig.path()}")
         output.append(_yaml_dump(masked))
+        output.append("\n=== Secrets Backend ===")
+        output.append(f"  Active: {_select_backend().name()}")
         output.append("\n=== OS Keyring Status ===")
 
         services = {
@@ -288,7 +308,20 @@ class NetCheckConfig:
 
     @staticmethod
     def get_password(service: str) -> Optional[str]:
-        """Retrieve password from OS keychain (never from config file)."""
+        """Retrieve password for *service* from env var or OS keychain.
+
+        Environment variable fallbacks (useful on headless Linux servers):
+          - service ``"email"``   → ``NETCHECK_SMTP_PASSWORD``
+        """
+        # Environment variable takes priority (no keyring needed)
+        _env_fallbacks: dict[str, str] = {
+            "email": "NETCHECK_SMTP_PASSWORD",
+        }
+        env_var = _env_fallbacks.get(service)
+        if env_var:
+            env_val = os.environ.get(env_var, "")
+            if env_val:
+                return env_val
         return _keyring_get(_KEYCHAIN_SERVICE, service)
 
     @staticmethod
@@ -548,42 +581,342 @@ def _yaml_dump(data: Any, indent: int = 0) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Keychain wrappers (optional dependency: keyring)
+# Multi-backend secret store system (keyring/Keychain/secret-tool/.env)
 # ---------------------------------------------------------------------------
 
-def _keyring_available() -> bool:
-    try:
-        import keyring  # noqa: F401
-        return True
-    except ImportError:
-        return False
+class SecretBackend(abc.ABC):
+    @abc.abstractmethod
+    def name(self) -> str:
+        """User-friendly name of the backend."""
+        pass
 
+    @abc.abstractmethod
+    def available(self) -> bool:
+        """Return True if this backend is supported and working on the current machine."""
+        pass
+
+    @abc.abstractmethod
+    def get(self, username: str) -> Optional[str]:
+        """Retrieve a secret."""
+        pass
+
+    @abc.abstractmethod
+    def set(self, username: str, secret: str) -> None:
+        """Store a secret."""
+        pass
+
+    @abc.abstractmethod
+    def delete(self, username: str) -> None:
+        """Delete a secret."""
+        pass
+
+
+class WindowsCredentialBackend(SecretBackend):
+    def name(self) -> str:
+        return "Windows Credential Manager (keyring)"
+
+    def available(self) -> bool:
+        if platform.system() != "Windows":
+            return False
+        try:
+            import keyring
+            backend = keyring.get_keyring()
+            backend_name = type(backend).__name__.lower()
+            if "fail" in backend_name or "null" in backend_name:
+                return False
+            return True
+        except Exception:
+            return False
+
+    def get(self, username: str) -> Optional[str]:
+        try:
+            import keyring
+            return keyring.get_password(_KEYCHAIN_SERVICE, username)
+        except Exception as exc:
+            print(f"[netcheck] Windows keyring read failed: {exc}", file=sys.stderr)
+            return None
+
+    def set(self, username: str, secret: str) -> None:
+        try:
+            import keyring
+            keyring.set_password(_KEYCHAIN_SERVICE, username, secret)
+        except Exception as exc:
+            raise RuntimeError(f"Windows keyring write failed: {exc}") from exc
+
+    def delete(self, username: str) -> None:
+        try:
+            import keyring
+            try:
+                keyring.delete_password(_KEYCHAIN_SERVICE, username)
+            except keyring.errors.PasswordDeleteError:
+                pass
+        except Exception as exc:
+            print(f"[netcheck] Windows keyring delete failed: {exc}", file=sys.stderr)
+
+
+class MacOSKeychainBackend(SecretBackend):
+    def name(self) -> str:
+        return "macOS Keychain (security CLI)"
+
+    def available(self) -> bool:
+        return platform.system() == "Darwin" and os.path.exists("/usr/bin/security")
+
+    def get(self, username: str) -> Optional[str]:
+        try:
+            res = subprocess.run(
+                ["/usr/bin/security", "find-generic-password", "-s", _KEYCHAIN_SERVICE, "-a", username, "-w"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if res.returncode == 0:
+                return res.stdout.strip()
+            return None
+        except Exception as exc:
+            print(f"[netcheck] macOS keychain read failed: {exc}", file=sys.stderr)
+            return None
+
+    def set(self, username: str, secret: str) -> None:
+        try:
+            res = subprocess.run(
+                ["/usr/bin/security", "add-generic-password", "-U", "-s", _KEYCHAIN_SERVICE, "-a", username, "-w", secret],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if res.returncode != 0:
+                raise RuntimeError(res.stderr.strip() or f"exit code {res.returncode}")
+        except Exception as exc:
+            raise RuntimeError(f"macOS keychain write failed: {exc}") from exc
+
+    def delete(self, username: str) -> None:
+        try:
+            subprocess.run(
+                ["/usr/bin/security", "delete-generic-password", "-s", _KEYCHAIN_SERVICE, "-a", username],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+        except Exception as exc:
+            print(f"[netcheck] macOS keychain delete failed: {exc}", file=sys.stderr)
+
+
+class LinuxSecretToolBackend(SecretBackend):
+    def name(self) -> str:
+        return "Linux Secret Service (secret-tool CLI)"
+
+    def available(self) -> bool:
+        if platform.system() != "Linux":
+            return False
+        if not shutil.which("secret-tool"):
+            return False
+        # Test if D-Bus session bus is working without connection errors
+        try:
+            res = subprocess.run(
+                ["secret-tool", "lookup", "service", "netcheck_probe", "username", "probe"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if "fail" in res.stderr.lower() or "dbus" in res.stderr.lower() or "could not connect" in res.stderr.lower():
+                return False
+            return True
+        except Exception:
+            return False
+
+    def get(self, username: str) -> Optional[str]:
+        try:
+            res = subprocess.run(
+                ["secret-tool", "lookup", "service", _KEYCHAIN_SERVICE, "username", username],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if res.returncode == 0 and res.stdout:
+                return res.stdout.strip()
+            return None
+        except Exception as exc:
+            print(f"[netcheck] Linux secret-tool lookup failed: {exc}", file=sys.stderr)
+            return None
+
+    def set(self, username: str, secret: str) -> None:
+        try:
+            res = subprocess.run(
+                ["secret-tool", "store", "--label", f"NetCheck {username}", "service", _KEYCHAIN_SERVICE, "username", username],
+                input=secret,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if res.returncode != 0:
+                raise RuntimeError(res.stderr.strip() or f"exit code {res.returncode}")
+        except Exception as exc:
+            raise RuntimeError(f"Linux secret-tool store failed: {exc}") from exc
+
+    def delete(self, username: str) -> None:
+        try:
+            subprocess.run(
+                ["secret-tool", "clear", "service", _KEYCHAIN_SERVICE, "username", username],
+                capture_output=True,
+                timeout=5
+            )
+        except Exception as exc:
+            print(f"[netcheck] Linux secret-tool clear failed: {exc}", file=sys.stderr)
+
+
+class EnvFileBackend(SecretBackend):
+    def name(self) -> str:
+        return "Environment File (.netcheck.env)"
+
+    def available(self) -> bool:
+        return True
+
+    def _get_path(self) -> Path:
+        return NetCheckConfig.path().parent / ".netcheck.env"
+
+    def _load_env_dict(self) -> dict[str, str]:
+        path = self._get_path()
+        if not path.exists():
+            return {}
+        res = {}
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    res[k.strip()] = v.strip()
+        except Exception as exc:
+            print(f"[netcheck] Warning: failed to read .netcheck.env: {exc}", file=sys.stderr)
+        return res
+
+    def _save_env_dict(self, data: dict[str, str]) -> None:
+        path = self._get_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            "# NetCheck secrets — DO NOT COMMIT THIS FILE",
+            "# Auto-generated by NetCheck config manager",
+            ""
+        ]
+        for k, v in data.items():
+            lines.append(f"{k}={v}")
+        try:
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            if platform.system() != "Windows":
+                os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        except Exception as exc:
+            raise RuntimeError(f"failed to write .netcheck.env: {exc}") from exc
+
+    def _to_env_key(self, username: str) -> str:
+        mapping = {
+            "email": "NETCHECK_SMTP_PASSWORD",
+            "smtp_user": "NETCHECK_SMTP_USER",
+            "smtp_to": "NETCHECK_SMTP_TO",
+            "slack": "NETCHECK_SLACK_WEBHOOK",
+            "webhook": "NETCHECK_WEBHOOK_TOKEN"
+        }
+        return mapping.get(username, f"NETCHECK_{username.upper()}")
+
+    def get(self, username: str) -> Optional[str]:
+        env_key = self._to_env_key(username)
+        if env_key in os.environ:
+            return os.environ[env_key]
+        data = self._load_env_dict()
+        return data.get(env_key)
+
+    def set(self, username: str, secret: str) -> None:
+        env_key = self._to_env_key(username)
+        data = self._load_env_dict()
+        data[env_key] = secret
+        self._save_env_dict(data)
+        os.environ[env_key] = secret
+
+    def delete(self, username: str) -> None:
+        env_key = self._to_env_key(username)
+        data = self._load_env_dict()
+        if env_key in data:
+            del data[env_key]
+            self._save_env_dict(data)
+        os.environ.pop(env_key, None)
+
+
+class NullBackend(SecretBackend):
+    def name(self) -> str:
+        return "None (Secrets must be set via system environment variables)"
+
+    def available(self) -> bool:
+        return True
+
+    def get(self, username: str) -> Optional[str]:
+        _warn_no_backend()
+        return None
+
+    def set(self, username: str, secret: str) -> None:
+        _warn_no_backend()
+        raise RuntimeError(
+            "No secret storage backend available. "
+            "Please configure system environment variables, e.g. NETCHECK_SLACK_WEBHOOK."
+        )
+
+    def delete(self, username: str) -> None:
+        _warn_no_backend()
+        raise RuntimeError("No secret storage backend available.")
+
+
+_no_backend_warned = False
+
+def _warn_no_backend() -> None:
+    global _no_backend_warned
+    if _no_backend_warned:
+        return
+    _no_backend_warned = True
+    print(
+        "[netcheck] WARNING: No usable native keychain or writable env file backend.\n"
+        "  Please export secrets to your environment, e.g.:\n"
+        "    export NETCHECK_SMTP_PASSWORD=...\n"
+        "    export NETCHECK_SLACK_WEBHOOK=...",
+        file=sys.stderr
+    )
+
+
+_active_backend: Optional[SecretBackend] = None
+
+def _select_backend() -> SecretBackend:
+    global _active_backend
+    if _active_backend is not None:
+        return _active_backend
+
+    backends: list[SecretBackend] = []
+    if sys.platform == "win32":
+        backends.append(WindowsCredentialBackend())
+    elif sys.platform == "darwin":
+        backends.append(MacOSKeychainBackend())
+    else:
+        backends.append(LinuxSecretToolBackend())
+
+    backends.append(EnvFileBackend())
+    backends.append(NullBackend())
+
+    for b in backends:
+        if b.available():
+            _active_backend = b
+            return b
+
+    _active_backend = NullBackend()
+    return _active_backend
+
+
+# ── Compatibility entry points ─────────────────────────────────────────────
 
 def _keyring_set(service: str, username: str, password: str) -> None:
-    if _keyring_available():
-        import keyring
-        keyring.set_password(service, username, password)
-    else:
-        raise RuntimeError(
-            "keyring package not installed. Run: pip install keyring"
-        )
+    backend = _select_backend()
+    backend.set(username, password)
 
 
 def _keyring_get(service: str, username: str) -> Optional[str]:
-    if _keyring_available():
-        import keyring
-        return keyring.get_password(service, username)
-    return None
+    backend = _select_backend()
+    return backend.get(username)
 
 
 def _keyring_delete(service: str, username: str) -> None:
-    if _keyring_available():
-        import keyring
-        try:
-            keyring.delete_password(service, username)
-        except keyring.errors.PasswordDeleteError:
-            pass
-    else:
-        raise RuntimeError(
-            "keyring package not installed. Run: pip install keyring"
-        )
+    backend = _select_backend()
+    backend.delete(username)
