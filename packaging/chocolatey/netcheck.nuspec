@@ -16,7 +16,7 @@
     <licenseUrl>https://github.com/farman20ali/network_access_check/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
 
-    <iconUrl>https://raw.githubusercontent.com/farman20ali/network_access_check/main/assets/icons/icon.png</iconUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/farman20ali/network_access_check@v{version}/assets/icons/icon.png</iconUrl>
 
     <summary>Cross-platform network diagnostics engine — DNS, TCP, HTTP, SSL, ping, traceroute, port scan, WHOIS, listening ports, MCP</summary>
     <description>A cross-platform network intelligence engine and CLI written in pure Python 3.

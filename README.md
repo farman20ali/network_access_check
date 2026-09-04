@@ -30,15 +30,36 @@ A premium, cross-platform, production-grade **Network Intelligence Engine & CLI*
 
 ## 📦 Installation
 
-### Option 1: PyPI (recommended — easiest)
+### Option 1: pipx — Linux / macOS ✅ Recommended
+[`pipx`](https://pipx.pypa.io) installs CLI tools in isolated environments and **automatically handles PATH** — no manual setup needed.
+
+```bash
+# Install pipx if you don't have it
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath          # adds ~/.local/bin to PATH (one-time)
+
+# Then install netcheck
+pipx install netcheckx
+```
+
+> After `ensurepath`, restart your terminal (or run `source ~/.bashrc`). Then:
+> ```bash
+> netcheck --help
+> ```
+
+---
+
+### Option 1b: pip — Linux / macOS (alternative)
 ```bash
 pip install netcheckx
 ```
-> **Note:** Package name is `netcheckx` (to avoid PyPI conflict). Both commands work:
-```bash
-netcheck --help          # Works
-netcheckx --help         # Also works (alias)
-```
+> **Note:** Package name is `netcheckx` (to avoid PyPI conflict). Both `netcheck` and `netcheckx` commands work after install.
+
+> ⚠️ **PATH warning (Linux/Ubuntu):** If you see *"scripts installed in `~/.local/bin` which is not on PATH"*, run once:
+> ```bash
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+> ```
+
 
 ### Option 2: Snap Store (Linux)
 ```bash
