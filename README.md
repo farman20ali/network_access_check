@@ -55,7 +55,14 @@ pip install netcheckx
 ```
 > **Note:** Package name is `netcheckx` (to avoid PyPI conflict). Both `netcheck` and `netcheckx` commands work after install.
 
-> ⚠️ **PATH warning (Linux/Ubuntu):** If you see *"scripts installed in `~/.local/bin` which is not on PATH"*, run once:
+**If you see a PATH warning after install**, just run the bundled setup helper — it auto-patches your shell:
+```bash
+netcheck-setup        # auto-adds ~/.local/bin to ~/.bashrc, ~/.zshrc, ~/.profile
+source ~/.bashrc      # reload shell
+netcheck --help       # done ✅
+```
+
+> Or manually, if preferred:
 > ```bash
 > echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```

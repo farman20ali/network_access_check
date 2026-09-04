@@ -241,6 +241,18 @@ def main() -> None:
     except (AttributeError, TypeError):
         pass
 
+    # PATH hint — Linux/macOS only: warn once if ~/.local/bin is not on PATH
+    # (common after `pip install --user netcheckx` on Ubuntu/Debian)
+    if sys.platform != "win32":
+        _local_bin = os.path.expanduser("~/.local/bin")
+        if _local_bin not in os.environ.get("PATH", "").split(":"):
+            print(
+                "\n⚠️  Tip: ~/.local/bin is not on your PATH.\n"
+                "   Run  netcheck-setup  to fix this automatically, or:\n"
+                "   echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc && source ~/.bashrc\n",
+                file=sys.stderr,
+            )
+
     # 3. Load environment defaults
     env_timeout = 5.0
     if "NETCHECK_TIMEOUT" in os.environ:
