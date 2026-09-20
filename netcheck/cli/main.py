@@ -241,17 +241,29 @@ def main() -> None:
     except (AttributeError, TypeError):
         pass
 
-    # PATH hint — Linux/macOS only: warn once if ~/.local/bin is not on PATH
-    # (common after `pip install --user netcheckx` on Ubuntu/Debian)
-    if sys.platform != "win32":
+    # PATH hint — Linux/macOS only.
+    # Only warn when the netcheck binary actually lives in ~/.local/bin but
+    # that directory is absent from PATH.  This means the user installed via
+    # `pip install --user` and the shell `netcheck` command won't work even
+    # though they are currently running us through `python -m netcheck` or a
+    # full path.  Suppress the warning with NETCHECK_NO_PATH_WARN=1.
+    if sys.platform != "win32" and "NETCHECK_NO_PATH_WARN" not in os.environ:  # noqa: unreachable (Windows-only dev env)
         _local_bin = os.path.expanduser("~/.local/bin")
-        if _local_bin not in os.environ.get("PATH", "").split(":"):
-            print(
-                "\n⚠️  Tip: ~/.local/bin is not on your PATH.\n"
-                "   Run  netcheck-setup  to fix this automatically, or:\n"
-                "   echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc && source ~/.bashrc\n",
-                file=sys.stderr,
-            )
+        _path_dirs = os.environ.get("PATH", "").split(":")
+        if _local_bin not in _path_dirs:
+            # Only warn when the binary genuinely exists there — otherwise the
+            # warning is irrelevant (e.g. system-wide pip install, venv, etc.)
+            _netcheck_bin = os.path.join(_local_bin, "netcheck")
+            if os.path.isfile(_netcheck_bin):
+                print(
+                    "\n⚠️  netcheck is installed in ~/.local/bin but that directory "
+                    "is not on your PATH.\n"
+                    "   The  netcheck  command will not work from a new shell.\n"
+                    "   Fix it by running:\n"
+                    "     echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc && source ~/.bashrc\n"
+                    "   (suppress this warning: export NETCHECK_NO_PATH_WARN=1)\n",
+                    file=sys.stderr,
+                )
 
     # 3. Load environment defaults
     env_timeout = 5.0
